@@ -109,12 +109,13 @@ class UserData {
   }
 
   static Future<Map<String, TotalSalesReport>> fetchTotalSalesForDbs(
-      Config config, List<String> dbNames, String startDate, String endDate) async {
+      Config config, List<String> dbNames, String startDate, String endDate)
+  async {
     final Map<String, TotalSalesReport> dbToTotalSalesMap = {};
 
     for (final db in dbNames) {
       final url =
-          "${config.apiUrl}report/totalsales?startDate=$startDate&endDate=$endDate&DB=$db";
+          "${config.apiUrl}report/totalsale?startDate=$startDate&endDate=$endDate&DB=$db";
       print("🔗 Requesting total sales from: $url");
 
       try {
@@ -135,6 +136,28 @@ class UserData {
     }
 
     return dbToTotalSalesMap;
+  }
+
+  static Future<List<TimeslotSales>> fetchTimeslotSalesForDbs(
+      Config config, List<String> dbNames, String startDate, String endDate) async {
+    final dbParams = dbNames.map((db) => "DB=$db").join("&");
+    final url = "${config.apiUrl}report/timeslotsale?startDate=$startDate&endDate=$endDate&$dbParams";
+    print("🔗 Requesting timeslot sales from: $url");
+
+    try {
+      final response = await http.get(Uri.parse(url));
+      print("📡 Status for timeslot sales: ${response.statusCode}");
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded is List) {
+          return decoded.map((e) => TimeslotSales.fromJson(e)).toList();
+        }
+      }
+    } catch (e) {
+      print("❌ Exception in fetchTimeslotSalesForDbs: $e");
+    }
+    return [];
   }
 }
 
