@@ -8,7 +8,7 @@ import 'SidePanel.dart';
 import 'main.dart';
 import 'package:merchant/TotalSalesReport.dart';
 import 'package:merchant/TotalSalesReport.dart';
-
+import 'package:fl_chart/fl_chart.dart';
 class Dashboard extends ConsumerStatefulWidget {
   final Map<String, String> dbToBrandMap;
 
@@ -29,10 +29,51 @@ class _DashboardState extends ConsumerState<Dashboard> {
   bool isLoading = false;
   String chartType = "Bar Chart"; // or "Line Chart"
   Key chartKey = UniqueKey();
+  List<TimeslotSales> timeslotSalesList = [];
+  bool isLoadingTimeslotSales = false;
 
-  final String syncText = "Order synced 7 Mins ago & POS synced 2 Mins ago.";
+  Future<void> fetchTimeslotSales() async {
+    setState(() => isLoadingTimeslotSales = true);
+    final config = await Config.loadFromAsset();
+    String startDate = DateFormat('dd-MM-yyyy').format(selectedDateRange!.start);
+    String endDate = DateFormat('dd-MM-yyyy').format(selectedDateRange!.end);
+
+    List<String> dbs;
+    if (selectedBrand == null || selectedBrand == "All") {
+      dbs = widget.dbToBrandMap.keys.toList();
+    } else {
+      dbs = widget.dbToBrandMap.entries
+          .where((entry) => entry.value == selectedBrand)
+          .map((entry) => entry.key)
+          .toList();
+    }
+
+    timeslotSalesList = await UserData.fetchTimeslotSalesForDbs(
+      config,
+      dbs,
+      startDate,
+      endDate,
+    );
+    setState(() => isLoadingTimeslotSales = false);
+  }
 
 
+  final String syncText = "Order synced  & POS synced 2 Mins ago.";
+  List<ChartBarData> get barData {
+    return timeslotSalesList.map((slot) => ChartBarData(
+      slot.timeslot,
+      slot.dineInSales.round(),
+      slot.takeAwaySales.round(),
+      slot.deliverySales.round(),
+    )).toList();
+  }
+
+  List<ChartLineData> get lineData {
+    return timeslotSalesList.map((slot) => ChartLineData(
+      slot.timeslot,
+      [slot.dineInSales.round(), slot.takeAwaySales.round(), slot.deliverySales.round()],
+    )).toList();
+  }
   @override
   void initState() {
     super.initState();
@@ -144,23 +185,6 @@ class _DashboardState extends ConsumerState<Dashboard> {
     }
   }
 
-  final List<ChartBarData> barData = [
-    ChartBarData("03:00am - 07:00am", 0, 0, 0),
-    ChartBarData("07:00am - 11:00am", 0, 0, 0),
-    ChartBarData("11:00am - 03:00pm", 0, 0, 5416),
-    ChartBarData("03:00pm - 07:00pm", 0, 0, 0),
-    ChartBarData("07:00pm - 11:00pm", 0, 0, 4143),
-    ChartBarData("11:00pm - 03:00am", 0, 0, 0),
-  ];
-
-  final List<ChartLineData> lineData = [
-    ChartLineData("03:00am - 07:00am", [0, 0, 0]),
-    ChartLineData("07:00am - 11:00am", [0, 0, 0]),
-    ChartLineData("11:00am - 03:00pm", [0, 0, 5416]),
-    ChartLineData("03:00pm - 07:00pm", [0, 0, 0]),
-    ChartLineData("07:00pm - 11:00pm", [0, 0, 4143]),
-    ChartLineData("11:00pm - 03:00am", [0, 0, 0]),
-  ];
 
   final List<Map<String, dynamic>> onlineOrderChannels = [
     {
@@ -532,9 +556,11 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                 ),
                                 AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 250),
-                                  child: chartType == "Bar Chart"
+                                  child: isLoadingTimeslotSales
+                                      ? const Center(child: CircularProgressIndicator())
+                                      : (chartType == "Bar Chart"
                                       ? _SalesBarChartWidget(data: barData, key: chartKey)
-                                      : _SalesLineChartWidget(data: lineData, key: chartKey),
+                                      : _SalesLineChartWidget(data: lineData, key: chartKey)),
                                 ),
                               ],
                             ),
@@ -1234,7 +1260,142 @@ class _DashboardState extends ConsumerState<Dashboard> {
     );
   }}
 
-// Dummy chart widgets for code completeness.
+
+class _SalesBarChartWidget extends StatelessWidget {
+  final List<ChartBarData> data;
+  const _SalesBarChartWidget({super.key, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    if (data.isEmpty) {
+      return SizedBox(height: 120, child: Center(child: Text("No Data")));
+    }
+    // Find the max for scaling
+    double max = data
+        .expand((d) => [d.dineIn, d.takeAway, d.delivery])
+        .fold(0, (a, b) => a > b ? a : b)
+        .toDouble();
+
+    return SizedBox(
+      height: 220,
+      child: BarChart(
+        BarChartData(
+          alignment: BarChartAlignment.spaceAround,
+          maxY: (max * 1.2).clamp(10, 100000),
+          barGroups: List.generate(data.length, (i) {
+            final d = data[i];
+            return BarChartGroupData(
+              x: i,
+              barRods: [
+                BarChartRodData(toY: d.dineIn.toDouble(), width: 10, color: Colors.blue),
+                BarChartRodData(toY: d.takeAway.toDouble(), width: 10, color: Colors.cyan),
+                BarChartRodData(toY: d.delivery.toDouble(), width: 10, color: Colors.green),
+              ],
+              showingTooltipIndicators: [0, 1, 2],
+            );
+          }),
+          titlesData: FlTitlesData(
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (double value, meta) {
+                  if (value.toInt() < 0 || value.toInt() >= data.length) return Container();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(data[value.toInt()].label, style: TextStyle(fontSize: 11)),
+                  );
+                },
+              ),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(showTitles: true, reservedSize: 36),
+            ),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          gridData: FlGridData(show: true),
+          borderData: FlBorderData(show: false),
+        ),
+      ),
+    );
+  }
+}
+
+class _SalesLineChartWidget extends StatelessWidget {
+  final List<ChartLineData> data;
+  const _SalesLineChartWidget({super.key, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    if (data.isEmpty) {
+      return SizedBox(height: 120, child: Center(child: Text("No Data")));
+    }
+    final spotsDineIn = <FlSpot>[];
+    final spotsTakeAway = <FlSpot>[];
+    final spotsDelivery = <FlSpot>[];
+    for (int i = 0; i < data.length; i++) {
+      spotsDineIn.add(FlSpot(i.toDouble(), data[i].values[0].toDouble()));
+      spotsTakeAway.add(FlSpot(i.toDouble(), data[i].values[1].toDouble()));
+      spotsDelivery.add(FlSpot(i.toDouble(), data[i].values[2].toDouble()));
+    }
+
+    double max = [
+      ...spotsDineIn.map((e) => e.y),
+      ...spotsTakeAway.map((e) => e.y),
+      ...spotsDelivery.map((e) => e.y),
+    ].fold(0.0, (a, b) => a > b ? a : b);
+
+    return SizedBox(
+      height: 220,
+      child: LineChart(
+        LineChartData(
+          maxY: (max * 1.2).clamp(10, 100000),
+          titlesData: FlTitlesData(
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (double value, meta) {
+                  if (value.toInt() < 0 || value.toInt() >= data.length) return Container();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(data[value.toInt()].label, style: TextStyle(fontSize: 11)),
+                  );
+                },
+              ),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(showTitles: true, reservedSize: 36),
+            ),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          gridData: FlGridData(show: true),
+          borderData: FlBorderData(show: false),
+          lineBarsData: [
+            LineChartBarData(
+              spots: spotsDineIn,
+              color: Colors.blue,
+              isCurved: true,
+              dotData: FlDotData(show: false),
+            ),
+            LineChartBarData(
+              spots: spotsTakeAway,
+              color: Colors.cyan,
+              isCurved: true,
+              dotData: FlDotData(show: false),
+            ),
+            LineChartBarData(
+              spots: spotsDelivery,
+              color: Colors.green,
+              isCurved: true,
+              dotData: FlDotData(show: false),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 class ChartBarData {
   final String label;
   final int dineIn;
@@ -1242,20 +1403,9 @@ class ChartBarData {
   final int delivery;
   ChartBarData(this.label, this.dineIn, this.takeAway, this.delivery);
 }
+
 class ChartLineData {
   final String label;
   final List<int> values;
   ChartLineData(this.label, this.values);
-}
-class _SalesBarChartWidget extends StatelessWidget {
-  final List<ChartBarData> data;
-  const _SalesBarChartWidget({super.key, required this.data});
-  @override
-  Widget build(BuildContext context) => Container(height: 120, color: Colors.transparent, child: Center(child: Text("Bar Chart Placeholder")));
-}
-class _SalesLineChartWidget extends StatelessWidget {
-  final List<ChartLineData> data;
-  const _SalesLineChartWidget({super.key, required this.data});
-  @override
-  Widget build(BuildContext context) => Container(height: 120, color: Colors.transparent, child: Center(child: Text("Line Chart Placeholder")));
 }
