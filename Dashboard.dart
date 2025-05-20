@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'SidePanel.dart';
 import 'main.dart';
+import 'package:merchant/TotalSalesReport.dart';
+import 'package:merchant/TotalSalesReport.dart';
 
 class Dashboard extends ConsumerStatefulWidget {
   final Map<String, String> dbToBrandMap;
@@ -18,43 +20,129 @@ class Dashboard extends ConsumerStatefulWidget {
 
 class _DashboardState extends ConsumerState<Dashboard> {
   String? selectedBrand;
-  String selectedDate = DateFormat('d MMM').format(DateTime.now());
+  DateTimeRange? selectedDateRange;
+  String get selectedDate => selectedDateRange != null
+      ? "${DateFormat('dd-MM-yyyy').format(selectedDateRange!.start)} to ${DateFormat('dd-MM-yyyy').format(selectedDateRange!.end)}"
+      : DateFormat('dd-MM-yyyy').format(DateTime.now());
   Map<String, dynamic> apiResponses = {};
+  Map<String, TotalSalesReport> totalSalesResponses = {};
   bool isLoading = false;
   String chartType = "Bar Chart"; // or "Line Chart"
   Key chartKey = UniqueKey();
 
   final String syncText = "Order synced 7 Mins ago & POS synced 2 Mins ago.";
-  final List<Map<String, dynamic>> summaryTabs = [
-    {
-      "title": "Total Sales",
-      "amount": "₹ 9,559",
-      "orders": "12 Orders",
-      "icon": Icons.local_activity,
-      "iconColor": Color(0xFFFCA2A2),
-    },
-    {
-      "title": "Dine In",
-      "amount": "₹ 0",
-      "orders": "0 Order",
-      "icon": Icons.restaurant,
-      "iconColor": Color(0xFF93E5F9),
-    },
-    {
-      "title": "TAKE AWAY",
-      "amount": "₹ 0",
-      "orders": "0 Order",
-      "icon": Icons.local_drink,
-      "iconColor": Color(0xFFEEE6FF),
-    },
-    {
-      "title": "Delivery",
-      "amount": "₹ 9,559",
-      "orders": "12 Orders",
-      "icon": Icons.delivery_dining,
-      "iconColor": Color(0xFFFFE6B9),
-    },
-  ];
+
+
+  @override
+  void initState() {
+    super.initState();
+    final today = DateTime.now();
+    selectedDateRange = DateTimeRange(start: today, end: today);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      fetchTotalSales();
+    });
+  }
+
+  List<Map<String, dynamic>> get summaryTabs {
+    // Helper to format amount and orders
+    String formatAmount(double value) => "₹ ${value.toStringAsFixed(2)}";
+    String formatOrders(int value) => "$value Order${value == 1 ? "" : "s"}";
+
+    if (selectedBrand == null || selectedBrand == "All") {
+      // Aggregate for all outlets
+      double totalSales = 0, dineIn = 0, takeAway = 0, delivery = 0;
+      int totalOrders = 0, dineOrders = 0, takeAwayOrders = 0, deliveryOrders = 0;
+
+      for (final report in totalSalesResponses.values) {
+        totalSales   += double.tryParse(report.getField("grandTotal", fallback: "0.00")) ?? 0;
+        dineIn       += double.tryParse(report.getField("dineInSales", fallback: "0.00")) ?? 0;
+        takeAway     += double.tryParse(report.getField("takeAwaySales", fallback: "0.00")) ?? 0;
+        delivery     += double.tryParse(report.getField("homeDeliverySales", fallback: "0.00")) ?? 0;
+
+        // Example: if you have these orders fields in your API/model, use them.
+        totalOrders      += int.tryParse(report.getField("totalOrders", fallback: "0")) ?? 0;
+        dineOrders       += int.tryParse(report.getField("dineInOrders", fallback: "0")) ?? 0;
+        takeAwayOrders   += int.tryParse(report.getField("takeAwayOrders", fallback: "0")) ?? 0;
+        deliveryOrders   += int.tryParse(report.getField("homeDeliveryOrders", fallback: "0")) ?? 0;
+      }
+
+      return [
+        {
+          "title": "Total Sales",
+          "amount": formatAmount(totalSales),
+          "orders": formatOrders(totalOrders),
+          "icon": Icons.local_activity,
+          "iconColor": Color(0xFFFCA2A2),
+        },
+        {
+          "title": "Dine In",
+          "amount": formatAmount(dineIn),
+          "orders": formatOrders(dineOrders),
+          "icon": Icons.restaurant,
+          "iconColor": Color(0xFF93E5F9),
+        },
+        {
+          "title": "TAKE AWAY",
+          "amount": formatAmount(takeAway),
+          "orders": formatOrders(takeAwayOrders),
+          "icon": Icons.local_drink,
+          "iconColor": Color(0xFFEEE6FF),
+        },
+        {
+          "title": "Delivery",
+          "amount": formatAmount(delivery),
+          "orders": formatOrders(deliveryOrders),
+          "icon": Icons.delivery_dining,
+          "iconColor": Color(0xFFFFE6B9),
+        },
+      ];
+    } else {
+      // Single outlet
+      final entry = widget.dbToBrandMap.entries.firstWhere(
+            (e) => e.value == selectedBrand,
+        orElse: () => MapEntry('', ''),
+      );
+      final dbKey = entry.key.isNotEmpty ? entry.key : null;
+      final report = dbKey != null ? totalSalesResponses[dbKey] : null;
+
+      String safeAmount(String? value) => "₹ ${(value != null && value.isNotEmpty) ? value : "0.00"}";
+      String safeOrders(String? value) {
+        final num = int.tryParse(value ?? "0") ?? 0;
+        return "$num Order${num == 1 ? "" : "s"}";
+      }
+
+      return [
+        {
+          "title": "Total Sales",
+          "amount": safeAmount(report?.getField("grandTotal")),
+          "orders": safeOrders(report?.getField("totalOrders")),
+          "icon": Icons.local_activity,
+          "iconColor": Color(0xFFFCA2A2),
+        },
+        {
+          "title": "Dine In",
+          "amount": safeAmount(report?.getField("dineInSales")),
+          "orders": safeOrders(report?.getField("dineInOrders")),
+          "icon": Icons.restaurant,
+          "iconColor": Color(0xFF93E5F9),
+        },
+        {
+          "title": "TAKE AWAY",
+          "amount": safeAmount(report?.getField("takeAwaySales")),
+          "orders": safeOrders(report?.getField("takeAwayOrders")),
+          "icon": Icons.local_drink,
+          "iconColor": Color(0xFFEEE6FF),
+        },
+        {
+          "title": "Delivery",
+          "amount": safeAmount(report?.getField("homeDeliverySales")),
+          "orders": safeOrders(report?.getField("homeDeliveryOrders")),
+          "icon": Icons.delivery_dining,
+          "iconColor": Color(0xFFFFE6B9),
+        },
+      ];
+    }
+  }
 
   final List<ChartBarData> barData = [
     ChartBarData("03:00am - 07:00am", 0, 0, 0),
@@ -91,16 +179,48 @@ class _DashboardState extends ConsumerState<Dashboard> {
       "brands": "2",
       "active": true,
     },
-
   ];
 
-  final List<Map<String, dynamic>> paymentBifurcation = [
-    {"color": Colors.amber, "label": "Cash", "value": "₹ 0"},
-    {"color": Colors.cyan, "label": "Card", "value": "₹ 0"},
-    {"color": Color(0xFF4886FF), "label": "Online", "value": "₹ 9,559"},
-    {"color": Colors.green, "label": "Additional", "value": "₹ 0"},
-  ];
+  List<Map<String, dynamic>> get paymentBifurcation {
+    // Get the correct TotalSalesReport based on selectedBrand
+    TotalSalesReport? report;
+    if (selectedBrand == null || selectedBrand == "All") {
+      report = totalSalesResponses.values.isNotEmpty ? totalSalesResponses.values.first : null;
+    } else {
+      // FIX: Use a dummy MapEntry for orElse, then check .key
+      final entry = widget.dbToBrandMap.entries.firstWhere(
+            (e) => e.value == selectedBrand,
+        orElse: () => MapEntry('', ''),
+      );
+      final dbKey = entry.key.isNotEmpty ? entry.key : null;
+      report = dbKey != null ? totalSalesResponses[dbKey] : null;
+    }
 
+    String safeAmount(String? value) => "₹ ${(value != null && value.isNotEmpty) ? value : "0.00"}";
+
+    return [
+      {
+        "color": Colors.amber,
+        "label": "Cash",
+        "value": safeAmount(report?.getField("cashSales")),
+      },
+      {
+        "color": Colors.cyan,
+        "label": "Card",
+        "value": safeAmount(report?.getField("cardSales")),
+      },
+      {
+        "color": Color(0xFF4886FF),
+        "label": "UPI",
+        "value": safeAmount(report?.getField("upiSales")),
+      },
+      {
+        "color": Colors.green,
+        "label": "Other",
+        "value": safeAmount(report?.getField("othersSales")),
+      },
+    ];
+  }
   Future<void> fetchData({bool reset = false}) async {
     if (reset) {
       setState(() {
@@ -123,28 +243,60 @@ class _DashboardState extends ConsumerState<Dashboard> {
         continue;
       }
 
-      final url = "$apiUrl/report/daywise?DB=$dbName";
-      try {
-        final response = await http.get(Uri.parse(url));
-        if (response.statusCode == 200) {
-          setState(() {
-            apiResponses[dbName] = json.decode(response.body);
-          });
-        } else {
-          setState(() {
-            apiResponses[dbName] = {"error": "Status code ${response.statusCode}"};
-          });
-        }
-      } catch (e) {
-        setState(() {
-          apiResponses[dbName] = {"error": e.toString()};
-        });
-      }
     }
 
     setState(() {
       isLoading = false;
     });
+  }
+
+  Future<void> fetchTotalSales() async {
+    setState(() {
+      isLoading = true;
+      totalSalesResponses = {};
+    });
+
+    final config = await Config.loadFromAsset();
+    String startDate = DateFormat('dd-MM-yyyy').format(selectedDateRange!.start);
+    String endDate = DateFormat('dd-MM-yyyy').format(selectedDateRange!.end);
+
+    List<String> dbs;
+    if (selectedBrand == null || selectedBrand == "All") {
+      dbs = widget.dbToBrandMap.keys.toList();
+    } else {
+      dbs = widget.dbToBrandMap.entries
+          .where((entry) => entry.value == selectedBrand)
+          .map((entry) => entry.key)
+          .toList();
+    }
+
+    // <<<----  ONLY CALL THE MAIN API LOGIC ---->>>
+    totalSalesResponses = await UserData.fetchTotalSalesForDbs(
+      config,
+      dbs,
+      startDate,
+      endDate,
+    );
+
+    setState(() {
+      isLoading = false;
+    });
+  }
+
+  String getField(String key, {String fallback = "0.00"}) {
+    // For ALL: only one merged response (key = 'ALL'), else per DB
+    if (selectedBrand == null || selectedBrand == "All") {
+      if (totalSalesResponses.isEmpty) return fallback;
+      final report = totalSalesResponses.entries.isNotEmpty ? totalSalesResponses.entries.first.value : null;
+      if (report == null) return fallback;
+      return report.getField(key, fallback: fallback);
+    } else {
+      // get only selected DB's value
+      final dbKey = widget.dbToBrandMap.entries.firstWhere((e) => e.value == selectedBrand).key;
+      final report = totalSalesResponses[dbKey];
+      if (report == null) return fallback;
+      return report.getField(key, fallback: fallback);
+    }
   }
 
   @override
@@ -202,13 +354,54 @@ class _DashboardState extends ConsumerState<Dashboard> {
                           ),
                         )),
                       ],
-                      onChanged: (value) {
+                      onChanged: (value) async {
                         setState(() {
                           selectedBrand = value;
                         });
+                        final startDate = selectedDateRange != null
+                            ? DateFormat('dd-MM-yyyy').format(selectedDateRange!.start)
+                            : DateFormat('dd-MM-yyyy').format(DateTime.now());
+                        final endDate = selectedDateRange != null
+                            ? DateFormat('dd-MM-yyyy').format(selectedDateRange!.end)
+                            : DateFormat('dd-MM-yyyy').format(DateTime.now());
+                        await fetchTotalSales();
                       },
                     ),
                   ),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.calendar_today, size: 18, color: Colors.black54),
+                  label: Text(selectedDate, style: const TextStyle(color: Colors.black87)),
+                  onPressed: () async {
+                    final picked = await showDateRangePicker(
+                      context: context,
+                      initialDateRange: selectedDateRange,
+                      firstDate: DateTime(2021),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        selectedDateRange = picked;
+                      });
+                      await fetchTotalSales(
+
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.refresh),
+                  label: const Text("Fetch Sales"),
+                  onPressed: () async {
+                    final startDate = selectedDateRange != null
+                        ? DateFormat('dd-MM-yyyy').format(selectedDateRange!.start)
+                        : DateFormat('dd-MM-yyyy').format(DateTime.now());
+                    final endDate = selectedDateRange != null
+                        ? DateFormat('dd-MM-yyyy').format(selectedDateRange!.end)
+                        : DateFormat('dd-MM-yyyy').format(DateTime.now());
+                    await fetchTotalSales();                  },
                 ),
               ],
             ),
@@ -241,155 +434,7 @@ class _DashboardState extends ConsumerState<Dashboard> {
                     if (selectedBrand != null && selectedBrand != "All")
                       Padding(
                         padding: EdgeInsets.only(bottom: isMobile ? 10 : 18),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Sync info and refresh+date
-                            Container(
-                              width: double.infinity,
-                              padding: EdgeInsets.symmetric(
-                                  vertical: isMobile ? 12 : 16,
-                                  horizontal: isMobile ? 10 : 18),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black12.withOpacity(0.04),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                              child: Flex(
-                                direction: isMobile ? Axis.vertical : Axis.horizontal,
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                crossAxisAlignment: isMobile ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(Icons.access_time, size: isMobile ? 17 : 20, color: Colors.grey[600]),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        syncText,
-                                        style: TextStyle(
-                                          fontSize: isMobile ? 13 : 15,
-                                          color: Colors.grey[700],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10, width: 10),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      SizedBox(
-                                        height: isMobile ? 36 : 38,
-                                        child: OutlinedButton(
-                                          style: OutlinedButton.styleFrom(
-                                            minimumSize: Size(isMobile ? 90 : 100, 36),
-                                            backgroundColor: Colors.white,
-                                            side: BorderSide(
-                                              color: Colors.grey[300]!,
-                                            ),
-                                          ),
-                                          onPressed: () {
-                                            setState(() {
-                                              chartKey = UniqueKey();
-                                            });
-                                          },
-                                          child: Row(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              Text(
-                                                DateFormat('d MMM').format(DateTime.now()),
-                                                style: TextStyle(
-                                                  fontSize: isMobile ? 13 : 15,
-                                                  color: Colors.black87,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 3),
-                                              const Icon(Icons.refresh, size: 18, color: Colors.black54),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 15),
-                            // Summary Tabs with increased height
-                            LayoutBuilder(
-                              builder: (context, box) {
-                                int tabCount = box.maxWidth < 400 ? 1 : box.maxWidth < 800 ? 2 : 4;
-                                return GridView.count(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  crossAxisCount: tabCount,
-                                  crossAxisSpacing: isMobile ? 8 : 18,
-                                  mainAxisSpacing: isMobile ? 8 : 18,
-                                  childAspectRatio: isMobile ? 1.1 : 1.8,
-
-                                  children: summaryTabs.map((tab) {
-                                    return Card(
-                                      elevation: 1,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      color: Colors.white,
-                                      child: Padding(
-                                        padding: EdgeInsets.symmetric(
-                                            horizontal: isMobile ? 8 : 18, vertical: isMobile ? 16 : 24),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.center,
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                        Expanded(
-                                        child:
-                                            Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Text(tab["title"],
-                                                    style: TextStyle(
-                                                        fontWeight: FontWeight.bold,
-                                                        fontSize: isMobile ? 13 : 17,
-                                                        color: Colors.black87)),
-                                                const SizedBox(height: 8),
-                                                Text(tab["amount"],
-                                                    style: TextStyle(
-                                                        fontWeight: FontWeight.bold,
-                                                        fontSize: isMobile ? 19 : 22,
-                                                        color: Colors.black87)),
-                                                const SizedBox(height: 4),
-                                                Text(tab["orders"],
-                                                    style: TextStyle(
-                                                        fontWeight: FontWeight.w400,
-                                                        fontSize: isMobile ? 12 : 14,
-                                                        color: Colors.grey[700])),
-                                              ],
-                                            ),
-                                        ),
-
-                                            Container(
-                                              decoration: BoxDecoration(
-                                                color: tab["iconColor"] as Color?,
-                                                shape: BoxShape.circle,
-                                              ),
-                                              padding: EdgeInsets.all(isMobile ? 10 : 16),
-                                              child: Icon(tab["icon"], color: Colors.black54, size: isMobile ? 28 : 38),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
+                        child: buildSummaryTabs(isMobile),
                       ),
 
                     // --- Sales Chart Section ---
@@ -530,9 +575,7 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.refresh, color: Colors.black54),
-                                      onPressed: () {
-                                        // refresh logic
-                                      },
+                                      onPressed: () {},
                                     ),
                                   ],
                                 ),
@@ -560,7 +603,6 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                   ],
                                 ),
                                 const SizedBox(height: 12),
-                                // Channel Cards (SCROLLABLE and responsive)
                                 SizedBox(
                                   height: isMobile ? 130 : 140,
                                   child: ListView.separated(
@@ -618,7 +660,6 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                                   ),
                                                   child: Text("Brands: ${channel["brands"]}", style: TextStyle(fontSize: 12)),
                                                 ),
-
                                               ],
                                             ),
                                           ],
@@ -665,18 +706,31 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.refresh, color: Colors.black54),
-                                      onPressed: () {
-                                        // refresh logic
-                                      },
+                                      onPressed: () {},
                                     ),
                                   ],
                                 ),
                                 const SizedBox(height: 12),
-                                // Responsive payment bar
                                 LayoutBuilder(
                                   builder: (context, box) {
                                     double totalWidth = min(320.0, box.maxWidth - 20);
                                     double barHeight = isMobile ? 24 : 28;
+
+                                    // Parse values from paymentBifurcation
+                                    List<double> values = paymentBifurcation
+                                        .map((p) => double.tryParse(p["value"].toString().replaceAll("₹", "").replaceAll(",", "").trim()) ?? 0)
+                                        .toList();
+                                    double total = values.fold(0.0, (a, b) => a + b);
+
+                                    // Calculate widths
+                                    List<double> widths = total > 0
+                                        ? values.map((v) => totalWidth * (v / total)).toList()
+                                        : List.filled(values.length, totalWidth / values.length);
+
+                                    // Optional: show % value over the biggest section (UPI in your case)
+                                    int maxIdx = values.indexOf(values.reduce(max));
+                                    String percentText = total > 0 ? "100%" : "";
+
                                     return Center(
                                       child: Stack(
                                         alignment: Alignment.center,
@@ -689,53 +743,30 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                               color: Colors.grey[100],
                                             ),
                                             child: Row(
-                                              children: [
-                                                Container(
-                                                  width: totalWidth * 0.08,
+                                              children: List.generate(paymentBifurcation.length, (i) {
+                                                return Container(
+                                                  width: widths[i],
                                                   height: barHeight,
                                                   decoration: BoxDecoration(
-                                                    color: Colors.amber,
-                                                    borderRadius: BorderRadius.only(
-                                                      topLeft: Radius.circular(barHeight / 2),
-                                                      bottomLeft: Radius.circular(barHeight / 2),
+                                                    color: paymentBifurcation[i]["color"],
+                                                    borderRadius: BorderRadius.horizontal(
+                                                      left: i == 0 ? Radius.circular(barHeight / 2) : Radius.zero,
+                                                      right: i == paymentBifurcation.length - 1 ? Radius.circular(barHeight / 2) : Radius.zero,
                                                     ),
                                                   ),
-                                                ),
-                                                Container(
-                                                  width: totalWidth * 0.08,
-                                                  height: barHeight,
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.cyan,
-                                                  ),
-                                                ),
-                                                Container(
-                                                  width: totalWidth * 0.68,
-                                                  height: barHeight,
-                                                  decoration: BoxDecoration(
-                                                    color: const Color(0xFF4886FF),
-                                                  ),
-                                                  child: Center(
+                                                  child: (i == maxIdx && total > 0)
+                                                      ? Center(
                                                     child: Text(
-                                                      "100%",
+                                                      percentText,
                                                       style: TextStyle(
                                                         color: Colors.white,
                                                         fontWeight: FontWeight.bold,
                                                       ),
                                                     ),
-                                                  ),
-                                                ),
-                                                Container(
-                                                  width: totalWidth * 0.08,
-                                                  height: barHeight,
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.green,
-                                                    borderRadius: BorderRadius.only(
-                                                      topRight: Radius.circular(barHeight / 2),
-                                                      bottomRight: Radius.circular(barHeight / 2),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
+                                                  )
+                                                      : null,
+                                                );
+                                              }),
                                             ),
                                           ),
                                         ],
@@ -744,7 +775,6 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                   },
                                 ),
                                 const SizedBox(height: 16),
-                                // Payment legends and values
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: paymentBifurcation.map((p) {
@@ -796,9 +826,10 @@ class _DashboardState extends ConsumerState<Dashboard> {
                           mainAxisSpacing: isMobile ? 8 : 14,
                           childAspectRatio: aspect,
                         ),
-                        itemCount: _stats.length,
+                        // Use stats.length, not _stats.length!
+                        itemCount: stats.length,
                         itemBuilder: (context, index) {
-                          final stat = _stats[index];
+                          final stat = stats[index];
                           return Card(
                             elevation: 2,
                             color: Colors.white,
@@ -821,38 +852,59 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                           ),
                                         ),
                                       ),
-                                      Icon(stat["icon"], color: stat["color"], size: isMobile ? 20 : 24),
+                                      Icon(stat["icon"], color: stat["iconColor"], size: isMobile ? 20 : 24),
                                     ],
                                   ),
                                   const Spacer(),
                                   Text(
-                                    stat["value"]!,
+                                    stat["amount"]!,
                                     style: TextStyle(
                                       fontSize: isMobile ? 16 : 20,
                                       fontWeight: FontWeight.bold,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(height: 5),
-                                  Text(
-                                    stat["description"]!,
-                                    style: TextStyle(
-                                      fontSize: isMobile ? 10 : 12,
-                                      color: Colors.grey,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
+                                  // Remove description if not used in your getter
+                                  // const SizedBox(height: 5),
+                                  // Text(
+                                  //   stat["description"]!,
+                                  //   style: TextStyle(
+                                  //     fontSize: isMobile ? 10 : 12,
+                                  //     color: Colors.grey,
+                                  //     overflow: TextOverflow.ellipsis,
+                                  //   ),
+                                  // ),
                                 ],
                               ),
                             ),
                           );
                         },
                       ),
-                    // Outletwise Table: only in "All" mode
                     if (selectedBrand == null || selectedBrand == "All") ...[
                       const SizedBox(height: 20),
                       _buildOutletwiseStatisticsTable(context, isMobile: isMobile),
                     ],
+                    const SizedBox(height: 20),
+                    // Example: Show total sales API response
+                    if (totalSalesResponses.isNotEmpty)
+                      Card(
+                        color: Colors.white,
+                        elevation: 1,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text("Total Sales API Result", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              for (final entry in totalSalesResponses.entries)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 2.0),
+                                  child: Text("${entry.key}: ${entry.value.totalSales}"),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               );
@@ -864,65 +916,211 @@ class _DashboardState extends ConsumerState<Dashboard> {
     );
   }
 
-  static final List<Map<String, dynamic>> _stats = [
+  Widget buildSummaryTabs(bool isMobile) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(
+              vertical: isMobile ? 12 : 16,
+              horizontal: isMobile ? 10 : 18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black12.withOpacity(0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Flex(
+            direction: isMobile ? Axis.vertical : Axis.horizontal,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: isMobile ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.access_time, size: isMobile ? 17 : 20, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    syncText,
+                    style: TextStyle(
+                      fontSize: isMobile ? 13 : 15,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10, width: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  SizedBox(
+                    height: isMobile ? 36 : 38,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: Size(isMobile ? 90 : 100, 36),
+                        backgroundColor: Colors.white,
+                        side: BorderSide(
+                          color: Colors.grey[300]!,
+                        ),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          chartKey = UniqueKey();
+                        });
+                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            DateFormat('d MMM').format(DateTime.now()),
+                            style: TextStyle(
+                              fontSize: isMobile ? 13 : 15,
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          const Icon(Icons.refresh, size: 18, color: Colors.black54),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 15),
+        LayoutBuilder(
+          builder: (context, box) {
+            int tabCount = box.maxWidth < 400 ? 1 : box.maxWidth < 800 ? 2 : 4;
+            return GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: tabCount,
+              crossAxisSpacing: isMobile ? 8 : 18,
+              mainAxisSpacing: isMobile ? 8 : 18,
+              childAspectRatio: isMobile ? 1.1 : 1.8,
+              children: summaryTabs.map((tab) {
+                return Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  color: Colors.white,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: isMobile ? 8 : 18, vertical: isMobile ? 16 : 24),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(tab["title"],
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: isMobile ? 13 : 17,
+                                      color: Colors.black87)),
+                              const SizedBox(height: 8),
+                              Text(tab["amount"],
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: isMobile ? 19 : 22,
+                                      color: Colors.black87)),
+                              const SizedBox(height: 4),
+                              Text(tab["orders"],
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w400,
+                                      fontSize: isMobile ? 12 : 14,
+                                      color: Colors.grey[700])),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: tab["iconColor"] as Color?,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: EdgeInsets.all(isMobile ? 10 : 16),
+                          child: Icon(tab["icon"], color: Colors.black54, size: isMobile ? 28 : 38),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  List<Map<String, dynamic>> get stats => [
     {
-      "title": "Total Sales",
-      "value": "4,679.00",
-      "description": "Total Sales of 2 outlets",
+      "title": "Total Salessssss",
+      "amount": "₹ ${getField("grandTotal", fallback: "0.00")}",
+      "orders": "Occupied: ${getField("occupiedTableCount", fallback: "0")}",
       "icon": Icons.bar_chart,
-      "color": Colors.red
+      "iconColor": const Color(0xFFFCA2A2),
+    },
+    {
+      "title": "Dine In",
+      "amount": "₹ ${getField("dineInSales", fallback: "0.00")}",
+      "orders": "",
+      "icon": Icons.restaurant,
+      "iconColor": const Color(0xFF93E5F9),
+    },
+    {
+      "title": "TAKE AWAY",
+      "amount": "₹ ${getField("takeAwaySales", fallback: "0.00")}",
+      "orders": "",
+      "icon": Icons.local_drink,
+      "iconColor": const Color(0xFFEEE6FF),
+    },
+    {
+      "title": "Delivery",
+      "amount": "₹ ${getField("homeDeliverySales", fallback: "0.00")}",
+      "orders": "",
+      "icon": Icons.delivery_dining,
+      "iconColor": const Color(0xFFFFE6B9),
+    },
+    {
+      "title": "Online",
+      "amount": "₹ ${getField("onlineSales", fallback: "0.00")}",
+      "orders": "",
+      "icon": Icons.shopping_cart,
+      "iconColor": Colors.blue[100],
     },
     {
       "title": "Net Sales",
-      "value": "4,678.05",
-      "description": "Net Sales of 2 outlets",
+      "amount": "₹ ${getField("netTotal", fallback: "0.00")}",
+      "orders": "",
       "icon": Icons.show_chart,
-      "color": Colors.orange
-    },
-    {
-      "title": "No. of Orders",
-      "value": "5",
-      "description": "No. of invoices generated",
-      "icon": Icons.receipt,
-      "color": Colors.blue
-    },
-    {
-      "title": "Expenses",
-      "value": "0.00",
-      "description": "Expenses recorded",
-      "icon": Icons.money_off,
-      "color": Colors.purple
-    },
-    {
-      "title": "Cash Collection",
-      "value": "0.00",
-      "description": "0% of sales collected via cash",
-      "icon": Icons.money,
-      "color": Colors.green
-    },
-    {
-      "title": "Online Sales",
-      "value": "4,679.00",
-      "description": "100% of sales generated from Online",
-      "icon": Icons.shopping_cart,
-      "color": Colors.blue
-    },
-    {
-      "title": "Taxes",
-      "value": "0.00",
-      "description": "Taxes recorded on POS",
-      "icon": Icons.account_balance,
-      "color": Colors.purple
+      "iconColor": Colors.orange[100],
     },
     {
       "title": "Discounts",
-      "value": "311.99",
-      "description": "6.25% of My Amount",
+      "amount": "₹ ${getField("billDiscount", fallback: "0.00")}",
+      "orders": "",
       "icon": Icons.discount,
-      "color": Colors.green
+      "iconColor": Colors.green[100],
+    },
+    {
+      "title": "Taxes",
+      "amount": "₹ ${getField("billTax", fallback: "0.00")}",
+      "orders": "",
+      "icon": Icons.account_balance,
+      "iconColor": Colors.purple[100],
     },
   ];
-
   Widget _legendDot(Color color) {
     return Container(
       width: 12, height: 12,
@@ -931,32 +1129,47 @@ class _DashboardState extends ConsumerState<Dashboard> {
   }
 
   Widget _buildOutletwiseStatisticsTable(BuildContext context, {required bool isMobile}) {
-    final outlets = [
-      {
-        "Outlet Name": "Total",
-        "Orders": "5",
-        "Sales": "4,679.00",
-        "Net Sales": "4,678.05",
-        "Tax": "0.00",
-        "Discount": "311.99",
-      },
-      {
-        "Outlet Name": "Aavakay - The Andhra Kitchen & Bar",
-        "Orders": "0",
-        "Sales": "0.00",
-        "Net Sales": "0.00",
-        "Tax": "0.00",
-        "Discount": "0.00",
-      },
-      {
-        "Outlet Name": "Ebony//The Flip Bar",
-        "Orders": "5",
-        "Sales": "4,679.00",
-        "Net Sales": "4,678.05",
-        "Tax": "0.00",
-        "Discount": "311.99",
-      },
-    ];
+    // Build a list from dbToBrandMap and totalSalesResponses, one entry for each outlet
+    final outlets = <Map<String, String>>[];
+
+    // Determine the "Total" row (all outlets merged)
+    String totalOrders = getField("occupiedTableCount", fallback: "0");
+    String totalSales = getField("grandTotal", fallback: "0.00");
+    String totalNetSales = getField("netTotal", fallback: "0.00");
+    String totalTax = getField("billTax", fallback: "0.00");
+    String totalDiscount = getField("billDiscount", fallback: "0.00");
+
+    outlets.add({
+      "Outlet Name": "Total",
+      "Orders": totalOrders,
+      "Sales": totalSales,
+      "Net Sales": totalNetSales,
+      "Tax": totalTax,
+      "Discount": totalDiscount,
+    });
+
+    print("Total Sales (All Outlets): $totalSales");
+
+    // Individual outlets
+    widget.dbToBrandMap.forEach((dbKey, outletName) {
+      final report = totalSalesResponses[dbKey];
+      final outletOrders = report?.getField("occupiedTableCount", fallback: "0") ?? "0";
+      final outletSales = report?.getField("grandTotal", fallback: "0.00") ?? "0.00";
+      final outletNetSales = report?.getField("netTotal", fallback: "0.00") ?? "0.00";
+      final outletTax = report?.getField("billTax", fallback: "0.00") ?? "0.00";
+      final outletDiscount = report?.getField("billDiscount", fallback: "0.00") ?? "0.00";
+
+      outlets.add({
+        "Outlet Name": outletName,
+        "Orders": outletOrders,
+        "Sales": outletSales,
+        "Net Sales": outletNetSales,
+        "Tax": outletTax,
+        "Discount": outletDiscount,
+      });
+
+      print("Sales for $outletName: $outletSales");
+    });
 
     return Card(
       elevation: 2,
@@ -983,30 +1196,32 @@ class _DashboardState extends ConsumerState<Dashboard> {
                 dataRowHeight: isMobile ? 34 : 48,
                 columns: outlets.first.keys
                     .map((key) => DataColumn(
-                  label: Text(key,
-                      style: TextStyle(
-                        fontSize: isMobile ? 11 : 14,
-                        fontWeight: FontWeight.w600,
-                        overflow: TextOverflow.ellipsis,
-                      )),
+                  label: Text(
+                    key,
+                    style: TextStyle(
+                      fontSize: isMobile ? 11 : 14,
+                      fontWeight: FontWeight.w600,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ))
                     .toList(),
                 rows: outlets
                     .map(
                       (outlet) => DataRow(
                     cells: outlet.values
-                        .map((value) => DataCell(
-                      SizedBox(
-                        width: isMobile ? 90 : 135,
-                        child: Text(
-                          value,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: isMobile ? 11 : 14,
+                        .map(
+                          (value) => DataCell(
+                        SizedBox(
+                          width: isMobile ? 90 : 135,
+                          child: Text(
+                            value,
+                            style: TextStyle(fontSize: isMobile ? 10 : 13),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),
-                    ))
+                    )
                         .toList(),
                   ),
                 )
@@ -1017,11 +1232,9 @@ class _DashboardState extends ConsumerState<Dashboard> {
         ],
       ),
     );
-  }
-}
+  }}
 
-// --- Chart Data Models and Widgets ---
-
+// Dummy chart widgets for code completeness.
 class ChartBarData {
   final String label;
   final int dineIn;
@@ -1029,240 +1242,20 @@ class ChartBarData {
   final int delivery;
   ChartBarData(this.label, this.dineIn, this.takeAway, this.delivery);
 }
-
 class ChartLineData {
   final String label;
-  final List<int> values; // [dineIn, takeAway, delivery]
+  final List<int> values;
   ChartLineData(this.label, this.values);
 }
-
 class _SalesBarChartWidget extends StatelessWidget {
   final List<ChartBarData> data;
-  const _SalesBarChartWidget({required this.data, Key? key}) : super(key: key);
-
+  const _SalesBarChartWidget({super.key, required this.data});
   @override
-  Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 600;
-    int maxVal = data.fold(0, (pv, e) => [e.dineIn, e.takeAway, e.delivery, pv].reduce((a, b) => a > b ? a : b));
-    if (maxVal == 0) maxVal = 1;
-    return SizedBox(
-      height: isMobile ? 180 : 260,
-      width: double.infinity,
-      child: Padding(
-        padding: EdgeInsets.only(bottom: isMobile ? 12 : 18, top: isMobile ? 8 : 16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: data.map((e) {
-            final deliveryHeight = (e.delivery / maxVal) * (isMobile ? 120 : 180);
-            // Only delivery bars shown as per your screenshot
-            return Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    e.delivery > 0 ? "₹ ${e.delivery}" : "",
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: isMobile ? 11 : 13,
-                      color: Colors.black,
-                    ),
-                  ),
-                  Container(
-                    width: isMobile ? 18 : 28,
-                    height: deliveryHeight,
-                    decoration: BoxDecoration(
-                      color: Colors.green[700],
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    e.label,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: isMobile ? 9 : 12, color: Colors.black87),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Container(height: 120, color: Colors.transparent, child: Center(child: Text("Bar Chart Placeholder")));
 }
-
-class _SalesLineChartWidget extends StatefulWidget {
+class _SalesLineChartWidget extends StatelessWidget {
   final List<ChartLineData> data;
-  const _SalesLineChartWidget({required this.data, Key? key}) : super(key: key);
-
+  const _SalesLineChartWidget({super.key, required this.data});
   @override
-  State<_SalesLineChartWidget> createState() => _SalesLineChartWidgetState();
-}
-
-class _SalesLineChartWidgetState extends State<_SalesLineChartWidget> {
-  int? tappedIndex;
-
-  @override
-  Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 600;
-    final double chartHeight = isMobile ? 180 : 260;
-    final double chartWidth = MediaQuery.of(context).size.width - (isMobile ? 40 : 80);
-
-    int maxY = widget.data.expand((d) => d.values).fold(0, (pv, v) => v > pv ? v : pv);
-    if (maxY < 1) maxY = 6000;
-    final points = widget.data;
-
-    double dx(int i) => (chartWidth / (points.length - 1)) * i;
-    double dy(int v) => chartHeight - (v / maxY * (chartHeight - 40)) - 20;
-    final linePoints = List.generate(points.length, (i) => Offset(dx(i), dy(points[i].values[2])));
-
-    return SizedBox(
-      height: chartHeight,
-      width: double.infinity,
-      child: Stack(
-        children: [
-          Positioned(
-            left: 0,
-            top: 18,
-            child: Column(
-              children: List.generate(4, (i) {
-                final y = maxY - (maxY ~/ 3) * i;
-                return SizedBox(
-                  height: (chartHeight - 40) / 3,
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: Text("${(y / 1000).toStringAsFixed(0)}k",
-                      style: TextStyle(fontSize: isMobile ? 10 : 14, color: Colors.grey),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-          // Chart lines and points
-          Positioned(
-            left: 34,
-            right: 12,
-            top: 0,
-            bottom: 28,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTapDown: (details) {
-                final x = details.localPosition.dx;
-                final idx = ((x / (chartWidth - 46)) * (points.length - 1)).round().clamp(0, points.length - 1);
-                setState(() {
-                  tappedIndex = idx;
-                });
-              },
-              child: CustomPaint(
-                painter: _CurvedLineChartPainter(
-                  points: linePoints.map((p) => Offset(p.dx + 20, p.dy)).toList(),
-                  highlightIndex: tappedIndex,
-                  highlightColor: Colors.blue,
-                ),
-                child: Container(),
-              ),
-            ),
-          ),
-          // X axis labels
-          Positioned(
-            left: 34,
-            right: 12,
-            bottom: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: points.map((e) => SizedBox(
-                width: 55,
-                child: Text(
-                  e.label,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: isMobile ? 10 : 13, color: Colors.grey[800]),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              )).toList(),
-            ),
-          ),
-          // Highlight popup
-          if (tappedIndex != null)
-            Positioned(
-              left: 34 + linePoints[tappedIndex!].dx - 60,
-              top: linePoints[tappedIndex!].dy - 60,
-              child: Material(
-                elevation: 7,
-                color: Colors.transparent,
-                child: Container(
-                  width: 120,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 8,
-                    )],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(points[tappedIndex!].label, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      Text("Dine In : ₹ ${points[tappedIndex!].values[0]}"),
-                      Text("TAKE AWAY : ₹ ${points[tappedIndex!].values[1]}"),
-                      Text("Delivery : ₹ ${points[tappedIndex!].values[2]}"),
-                      Text("Total : ₹ ${points[tappedIndex!].values.reduce((a, b) => a + b)}"),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CurvedLineChartPainter extends CustomPainter {
-  final List<Offset> points;
-  final int? highlightIndex;
-  final Color highlightColor;
-  _CurvedLineChartPainter({required this.points, this.highlightIndex, required this.highlightColor});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Curved line with cubic bezier
-    final paint = Paint()
-      ..color = Colors.blue
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
-    if (points.length > 1) {
-      final path = Path()..moveTo(points[0].dx, points[0].dy);
-      for (int i = 0; i < points.length - 1; i++) {
-        final p1 = points[i];
-        final p2 = points[i + 1];
-        final controlPointX = (p1.dx + p2.dx) / 2;
-        path.cubicTo(
-          controlPointX, p1.dy,
-          controlPointX, p2.dy,
-          p2.dx, p2.dy,
-        );
-      }
-      canvas.drawPath(path, paint);
-    }
-    for (int i = 0; i < points.length; i++) {
-      canvas.drawCircle(points[i], 6, Paint()..color = Colors.white..strokeWidth=2..style=PaintingStyle.fill);
-      canvas.drawCircle(points[i], 4, Paint()..color = Colors.blue);
-    }
-    if (highlightIndex != null) {
-      canvas.drawCircle(points[highlightIndex!], 9, Paint()
-        ..color = highlightColor.withOpacity(0.13)
-        ..style = PaintingStyle.fill);
-      canvas.drawCircle(points[highlightIndex!], 7, Paint()
-        ..color = highlightColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  Widget build(BuildContext context) => Container(height: 120, color: Colors.transparent, child: Center(child: Text("Line Chart Placeholder")));
 }
