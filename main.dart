@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:merchant/TotalSalesReport.dart';
+import 'package:merchant/KotSummaryReport.dart';
 import 'Dashboard.dart';
 
 final dbNamesProvider = StateProvider<List<String>>((ref) => []);
@@ -139,7 +140,8 @@ class UserData {
   }
 
   static Future<List<TimeslotSales>> fetchTimeslotSalesForDbs(
-      Config config, List<String> dbNames, String startDate, String endDate) async {
+      Config config, List<String> dbNames, String startDate, String endDate)
+  async {
     final dbParams = dbNames.map((db) => "DB=$db").join("&");
     final url = "${config.apiUrl}report/timeslotsale?startDate=$startDate&endDate=$endDate&$dbParams";
     print("🔗 Requesting timeslot sales from: $url");
@@ -158,6 +160,52 @@ class UserData {
       print("❌ Exception in fetchTimeslotSalesForDbs: $e");
     }
     return [];
+  }
+
+  static Future<Map<String, List<KotSummaryReport>>> fetchKotSummaryForDbs(
+      Config config, List<String> dbNames, String startDate, String endDate)
+  async {
+    final Map<String, List<KotSummaryReport>> dbToKotSummaryMap = {};
+
+    for (final db in dbNames) {
+      final url =
+          "${config.apiUrl}report/kotsummary?startDate=$startDate&endDate=$endDate&DB=$db";
+      print("🔗 Requesting KOT summary from: $url");
+
+      try {
+        final response = await http.get(Uri.parse(url));
+        print("📡 Status for KOT summary DB '$db': ${response.statusCode}");
+
+        if (response.statusCode == 200) {
+          final decoded = json.decode(response.body);
+          if (decoded is List) {
+            dbToKotSummaryMap[db] =
+                decoded.map<KotSummaryReport>((e) => KotSummaryReport.fromJson(e)).toList();
+          } else {
+            print("❓ Unexpected response format for KOT summary DB: $db → $decoded");
+          }
+        } else {
+          print("❌ Failed to fetch KOT summary for DB: $db → ${response.reasonPhrase}");
+        }
+      } catch (e) {
+        print("🔥 Exception while fetching KOT summary for DB: $db → $e");
+      }
+    }
+
+    return dbToKotSummaryMap;
+  }
+
+
+  // Inside your main widget's state (e.g. _MyAppState or your dashboard page)
+  Map<String, List<KotSummaryReport>> dbToKotSummaryMap = {};
+  List<KotSummaryReport> allOrders = [];
+  List<KotSummaryReport> activeOrders = [];
+
+// In your async function (e.g. initState or after user login)
+  void fetchAllKOTOrders(Config config, List<String> dbNames, String startDate, String endDate) async {
+    dbToKotSummaryMap = await UserData.fetchKotSummaryForDbs(config, dbNames, startDate, endDate);
+    allOrders = dbToKotSummaryMap.values.expand((x) => x).toList();
+    activeOrders = allOrders.where((o) => o.kotStatus == "active").toList();
   }
 }
 
