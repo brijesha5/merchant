@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -11,21 +12,19 @@ import 'package:open_file/open_file.dart';
 import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
 import 'package:flutter_esc_pos_network/flutter_esc_pos_network.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import 'FireConstants.dart';
-// Ensure to add this import for PDF sharing
 
 void main() {
   runApp( Dayend());
 }
 
 class Dayend extends StatelessWidget {
-   Dayend({Key? key}) : super(key: key);
+  Dayend({Key? key}) : super(key: key);
 
 
 
 
-   @override
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -56,81 +55,80 @@ class Dayend extends StatelessWidget {
         body:  DayendDataPage(),
 
       ),
-    ),
+      ),
     );
   }
 }
 
 
+  class DayendDataPage extends StatefulWidget {
+    const DayendDataPage({Key? key}) : super(key: key);
 
-class DayendDataPage extends StatefulWidget {
-  const DayendDataPage({Key? key}) : super(key: key);
-
-  @override
-  _DayendDataPageState createState() => _DayendDataPageState();
-}
-
-class _DayendDataPageState extends State<DayendDataPage> {
-   Map<String, dynamic> data = {};
-
-  bool isLoading = true;
-  String errorMessage = '';
-  String previousdate ="";
- // To store the response
-
-  @override
-  void initState() {
-    super.initState();
-
-    fetchData();
-
-
-    if(DayCloseRequested == 'Y')
-    {
-      closeday();
-    }
+    @override
+    _DayendDataPageState createState() => _DayendDataPageState();
   }
 
+  class _DayendDataPageState extends State<DayendDataPage> {
+    Map<String, dynamic> data = {};
 
-   void _showDialog(BuildContext context, String title, String content) {
-     showDialog(
-       context: context,
-       builder: (BuildContext context) {
-         Future.delayed(const Duration(seconds: 5), () {
-           Navigator.of(context).pop();
-         });
+    bool isLoading = true;
+    String errorMessage = '';
+    String previousdate ="";
+    // To store the response
 
-         final backgroundColor = Colors.white.withOpacity(0.7);
-         return AlertDialog(
-           backgroundColor: backgroundColor,
-           content: Column(
-             mainAxisSize: MainAxisSize.min,
-             children: <Widget>[
-               const Icon(
-                 Icons.check_circle,
-                 size: 48.0,
-                 color: Colors.green,
-               ),
-               const SizedBox(height: 16.0),
-               Text(
-                 content,
-                 textAlign: TextAlign.center,
-                 style: TextStyle(
-                   color: Colors.blue.shade800,
-                   fontSize: 16.0,
-                   fontWeight: FontWeight.bold,
-                 ),
-               ),
-             ],
-           ),
-           actions: const [],
-         );
-       },
-     );
-   }
+    @override
+    void initState() {
+      super.initState();
+
+      fetchData();
+
+
+      if(DayCloseRequested == 'Y')
+      {
+        closeday();
+      }
+    }
+
+
+  void _showDialog(BuildContext context, String title, String content) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        Future.delayed(const Duration(seconds: 5), () {
+          Navigator.of(context).pop();
+        });
+
+        final backgroundColor = Colors.white.withOpacity(0.7);
+        return AlertDialog(
+          backgroundColor: backgroundColor,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Icon(
+                Icons.check_circle,
+                size: 48.0,
+                color: Colors.green,
+              ),
+              const SizedBox(height: 16.0),
+              Text(
+                content,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.blue.shade800,
+                  fontSize: 16.0,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          actions: const [],
+        );
+      },
+    );
+  }
 
   Future<void> printTicketreprint(List<int> ticket) async {
-    final printer = PrinterNetworkManager('192.168.29.201');
+    final printer = PrinterNetworkManager('192.168.1.223');
     PosPrintResult connect = await printer.connect();
     if (connect == PosPrintResult.success) {
       PosPrintResult printing = await printer.printTicket(ticket);
@@ -148,70 +146,112 @@ class _DayendDataPageState extends State<DayendDataPage> {
 
 
   }
-
-  Future<void> printTicket(List<int> ticket) async {
-    final printer = PrinterNetworkManager('192.168.29.201');
-    PosPrintResult connect = await printer.connect();
-    if (connect == PosPrintResult.success) {
-      PosPrintResult printing = await printer.printTicket(ticket);
-
-      print(printing.msg);
-      printer.disconnect();
-
-
-      exit(0);
-
-
+    void closeApp() {
+      if (Platform.isAndroid) {
+        SystemNavigator.pop();
+      } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        exit(0);
+      }
     }
 
-
-
-
-  }
-
+    Future<void> printTicket(List<int> ticket) async {
+      final printer = PrinterNetworkManager('192.168.1.222');
+      PosPrintResult connect = await printer.connect();
+      if (connect == PosPrintResult.success) {
+        PosPrintResult printing = await printer.printTicket(ticket);
+        print(printing.msg);
+        printer.disconnect();
+        closeApp();
+      }
+    }
   Future<void> fetchData({String? posdate, String? previousdate}) async {
-    posdate ??= DateFormat('dd-MM-yyyy').format(DateTime.now()); // Format as 'dd-MM-yyyy'
+    // Use current date if posdate is not provided
+    posdate ??= DateFormat('dd-MM-yyyy').format(DateTime.now());
     final String finalPosdate = posdate;
-    final String finalPreviousDate = previousdate ?? ''; // Default to empty if not provided
+    final String finalPreviousDate = previousdate ?? '';
 
     // Build the URL
     String url = '${apiUrl}report/dayend?DB=${CLIENTCODE}&posdate=${finalPosdate}';
-
     if (finalPreviousDate.isNotEmpty) {
       url += '&previousdate=${finalPreviousDate}';
     }
+
+    print("📡 Calling URL: $url");
+
     setState(() {
-      isLoading = true; // Show loading indicator while fetching data
+      isLoading = true;
+      errorMessage = '';
+
     });
-    // Make the request
-    final response = await http.get(Uri.parse(url));
 
-    print("fetching day end report response code: ${response.statusCode}");
+    try {
+      final response = await http.get(Uri.parse(url));
 
-    if (response.statusCode == 200) {
-      if (response.body.isNotEmpty) {
-        try {
+      print("📥 Response Code: ${response.statusCode}");
+      print("🧾 Raw Response Body: ${response.body}");
 
-          data = json.decode(response.body);
+      if (response.statusCode == 200) {
+        if (response.body.isNotEmpty) {
+          try {
+            final decodedResponse = json.decode(response.body);
 
+            if (decodedResponse is List) {
+              print("✅ Decoded response is a List");
+
+              if (decodedResponse.isNotEmpty && decodedResponse.first != null) {
+                print("🔍 First item in list: ${decodedResponse.first}");
+
+                data = (decodedResponse.first as Map).map(
+                      (key, value) => MapEntry(key.toString(), value),
+                );
+                print("📊 Parsed dayend report data: $data");
+              } else {
+                print("⚠️ List is empty or contains null");
+                data = {}; // or handle with a message
+              }
+
+            } else if (decodedResponse is Map) {
+              print("✅ Decoded response is a Map");
+
+              data = decodedResponse.map(
+                    (key, value) => MapEntry(key.toString(), value),
+              );
+              print("📊 Parsed dayend report data: $data");
+
+            } else {
+              throw Exception('Unexpected JSON structure: ${decodedResponse.runtimeType}');
+            }
+
+            setState(() {
+              isLoading = false;
+            });
+
+          } catch (e) {
+            setState(() {
+              isLoading = false;
+              errorMessage = 'Error parsing data: $e';
+            });
+            print("❌ Error while parsing response: $e");
+          }
+        } else {
+          print("⚠️ Response body is empty.");
           setState(() {
-
-
             isLoading = false;
-          });
-
-          print("dayend report body: " + data.toString());
-        } catch (e) {
-          setState(() {
-            isLoading = false;
-            errorMessage = 'Error parsing data: $e';
+            errorMessage = 'Empty response received from server.';
           });
         }
+      } else {
+        print("❌ Failed with status: ${response.statusCode}");
+        setState(() {
+          isLoading = false;
+          errorMessage = 'Failed to load data: ${response.statusCode}';
+        });
       }
-    } else {
+    } catch (e) {
+      print("❌ Exception during fetchData: $e");
       setState(() {
         isLoading = false;
-        errorMessage = 'Failed to load data: ${response.statusCode}';
+        errorMessage = 'Exception occurred: $e';
       });
     }
   }
@@ -227,18 +267,18 @@ class _DayendDataPageState extends State<DayendDataPage> {
 
     if (selectedDate != null) {
 
-        // Format the selected date as 'dd-MM-yyyy'
-        String formattedDate = DateFormat('dd-MM-yyyy').format(selectedDate);
+      // Format the selected date as 'dd-MM-yyyy'
+      String formattedDate = DateFormat('dd-MM-yyyy').format(selectedDate);
 
-        // Set posdate or previousdate based on which date is being selected
-        if (whichDate == 'posdate') {
-          posdate = formattedDate;
+      // Set posdate or previousdate based on which date is being selected
+      if (whichDate == 'posdate') {
+        posdate = formattedDate;
 
-        } else {
-          previousdate = formattedDate;
-          // Fetch data immediately after selecting previousdate
-          fetchData(posdate: posdate, previousdate: previousdate);
-        }
+      } else {
+        previousdate = formattedDate;
+        // Fetch data immediately after selecting previousdate
+        fetchData(posdate: posdate, previousdate: previousdate);
+      }
 
     }
   }
@@ -295,11 +335,11 @@ class _DayendDataPageState extends State<DayendDataPage> {
 
 
               if(statusMessage == "shifted")
-                {
-                  testTicket();
-                  DayCloseRequested = 'N';
+              {
+                await testTicket();
+                DayCloseRequested = 'N';
 
-                }
+              }
 
 
 
@@ -317,7 +357,7 @@ class _DayendDataPageState extends State<DayendDataPage> {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                   Icon(
+                  Icon(
                     Icons.check_circle,
                     size: 48.0, // Set the size of the icon
                     color: statusMessage == "shifted" ? Colors.green : Colors.redAccent, // Set the color of the icon
@@ -1633,7 +1673,8 @@ class _DayendDataPageState extends State<DayendDataPage> {
     return bytes;
   }
 ////main print for dayend////////////
-  Future<List<int>> testTicket() async {
+  Future<List<int>> testTicket()
+  async {
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm80, profile);
 
@@ -1700,7 +1741,7 @@ class _DayendDataPageState extends State<DayendDataPage> {
         styles: const PosStyles(
           height: PosTextSize.size2,
           width: PosTextSize.size2,
-            align: PosAlign.center,
+          align: PosAlign.center,
         ));
 
 
@@ -2858,7 +2899,10 @@ class _DayendDataPageState extends State<DayendDataPage> {
 
     printTicket(bytes);
     return bytes;
+
   }
+
+
 
   Future<String> exportToPdf(BuildContext context) async {
     final pdf = pw.Document();
@@ -2868,11 +2912,57 @@ class _DayendDataPageState extends State<DayendDataPage> {
           return pw.Column(
             children: [
               pw.Text('Day End Report', style: pw.TextStyle(fontSize: 24)),
-              pw.SizedBox(height: 16),
+              pw.SizedBox(height: 30),
               pw.Table.fromTextArray(
-                headers: ['Bill Date', 'Bill Total'],
+                headers: ['Bill Date', 'Bill Total', 'Cash Sale', 'Card Sale', 'UPI Sale', 'Swiggy Sale', 'Zomato Sale',
+                  'Discount Amount', 'Delivery Charge', 'Packaging Charge', 'Round Off', 'Tip Amount',
+                  'Dine In Sales', 'Takeaway Sales', 'Home Delivery Sales', 'Counter Sales', 'Online Sales',
+                  'Total Tax', 'No. of Bills', 'No. of Dine-In Bills', 'No. of Takeaway Bills', 'No. of Home Delivery Bills',
+                  'No. of Counter Bills', 'No. of Swiggy Bills', 'No. of Zomato Bills', 'No. of Complimentary Bills',
+                  'Cancelled Bills', 'Cancelled Amount', 'Modified Bills', 'Discounted Bills', 'Discounted Amount',
+                  'Moved KOT', 'Cancelled KOT', 'Pax Count', 'Used Card Balance', 'Unused Card Balance',
+                  'Food Sub Total', 'Food Net Total', 'Liquor Sub Total', 'Liquor Net Total'],
                 data: [
-                  [data['billDate'] ?? 'N/A', data['billTotal'] ?? 'N/A'],
+                  [data['billDate'] ?? 'N/A',
+                    data['billTotal'] ?? 'N/A',
+                    data['cashsaleamt'] ?? '0.00',
+                    data['cardsaleamt'] ?? '0.00',
+                    data['upisaleamt'] ?? '0.00',
+                    data['swiggysaleamt'] ?? '0.00',
+                    data['zomatosaleamt'] ?? '0.00',
+                    data['discountamt'] ?? '0.00',
+                    data['deliverychargeamt'] ?? '0.00',
+                    data['packagingchargeamt'] ?? '0.00',
+                    data['roundofamt'] ?? '0.00',
+                    data['tipamt'] ?? '0.00',
+                    data['dineinsaleamt'] ?? '0.00',
+                    data['tksalesamt'] ?? '0.00',
+                    data['hdsaleamt'] ?? '0.00',
+                    data['countersaleamt'] ?? '0.00',
+                    data['onlinesaleamt'] ?? '0.00',
+                    data['totaltax'] ?? '0.00',
+                    data['nofbils'] ?? '0',
+                    data['nofdineinbills'] ?? '0',
+                    data['noftakeawaybills'] ?? '0',
+                    data['nofhdbills'] ?? '0',
+                    data['nofcounterbills'] ?? '0',
+                    data['nofswiggybills'] ?? '0',
+                    data['nofzomatobills'] ?? '0',
+                    data['nofcomplibills'] ?? '0',
+                    data['nofcancelbill'] ?? '0',
+                    data['cancelamt'] ?? '0.00',
+                    data['nofmodifybills'] ?? '0',
+                    data['nofdiscountedbills'] ?? '0',
+                    data['discountamt'] ?? '0.00',
+                    data['nofmovekot'] ?? '0',
+                    data['nofcancelkot'] ?? '0',
+                    data['paxcount'] ?? '0.00',
+                    data['usedcardbalance'] ?? '0.00',
+                    data['unusedcardbalance'] ?? '0.00',
+                    data['foodsubtotal'] ?? '0.00',
+                    data['foodnettotal'] ?? '0.00',
+                    data['liquorsubtotal'] ?? '0.00',
+                    data['liquornettotal'] ?? '0.00'],
                 ],
               ),
             ],
@@ -2892,8 +2982,54 @@ class _DayendDataPageState extends State<DayendDataPage> {
     var excel = Excel.createExcel();
     Sheet sheetObject = excel['Sheet1'];
 
-    sheetObject.appendRow(['Bill Date', 'Bill Total']);
-    sheetObject.appendRow([data['billDate'] ?? 'N/A' , data['billTotal'] ?? 'N/A']);
+    sheetObject.appendRow([ 'Bill Date', 'Bill Total', 'Cash Sale', 'Card Sale', 'UPI Sale', 'Swiggy Sale', 'Zomato Sale',
+      'Discount Amount', 'Delivery Charge', 'Packaging Charge', 'Round Off', 'Tip Amount',
+      'Dine In Sales', 'Takeaway Sales', 'Home Delivery Sales', 'Counter Sales', 'Online Sales',
+      'Total Tax', 'No. of Bills', 'No. of Dine-In Bills', 'No. of Takeaway Bills', 'No. of Home Delivery Bills',
+      'No. of Counter Bills', 'No. of Swiggy Bills', 'No. of Zomato Bills', 'No. of Complimentary Bills',
+      'Cancelled Bills', 'Cancelled Amount', 'Modified Bills', 'Discounted Bills', 'Discounted Amount',
+      'Moved KOT', 'Cancelled KOT', 'Pax Count', 'Used Card Balance', 'Unused Card Balance',
+      'Food Sub Total', 'Food Net Total', 'Liquor Sub Total', 'Liquor Net Total']);
+    sheetObject.appendRow([data['billDate'] ?? 'N/A',
+      data['billTotal'] ?? 'N/A',
+      data['cashsaleamt'] ?? '0.00',
+      data['cardsaleamt'] ?? '0.00',
+      data['upisaleamt'] ?? '0.00',
+      data['swiggysaleamt'] ?? '0.00',
+      data['zomatosaleamt'] ?? '0.00',
+      data['discountamt'] ?? '0.00',
+      data['deliverychargeamt'] ?? '0.00',
+      data['packagingchargeamt'] ?? '0.00',
+      data['roundofamt'] ?? '0.00',
+      data['tipamt'] ?? '0.00',
+      data['dineinsaleamt'] ?? '0.00',
+      data['tksalesamt'] ?? '0.00',
+      data['hdsaleamt'] ?? '0.00',
+      data['countersaleamt'] ?? '0.00',
+      data['onlinesaleamt'] ?? '0.00',
+      data['totaltax'] ?? '0.00',
+      data['nofbils'] ?? '0',
+      data['nofdineinbills'] ?? '0',
+      data['noftakeawaybills'] ?? '0',
+      data['nofhdbills'] ?? '0',
+      data['nofcounterbills'] ?? '0',
+      data['nofswiggybills'] ?? '0',
+      data['nofzomatobills'] ?? '0',
+      data['nofcomplibills'] ?? '0',
+      data['nofcancelbill'] ?? '0',
+      data['cancelamt'] ?? '0.00',
+      data['nofmodifybills'] ?? '0',
+      data['nofdiscountedbills'] ?? '0',
+      data['discountamt'] ?? '0.00',
+      data['nofmovekot'] ?? '0',
+      data['nofcancelkot'] ?? '0',
+      data['paxcount'] ?? '0.00',
+      data['usedcardbalance'] ?? '0.00',
+      data['unusedcardbalance'] ?? '0.00',
+      data['foodsubtotal'] ?? '0.00',
+      data['foodnettotal'] ?? '0.00',
+      data['liquorsubtotal'] ?? '0.00',
+      data['liquornettotal'] ?? '0.00']);
 
     final directory = await getApplicationDocumentsDirectory();
     final path = '${directory.path}/dayend_data.xlsx';
@@ -2912,10 +3048,8 @@ class _DayendDataPageState extends State<DayendDataPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Always display the date section at the top
             _buildDateSection('', previousdate, 'previousdate'),
 
-            // Conditional rendering based on loading/error state
             isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : errorMessage.isNotEmpty
@@ -2934,14 +3068,14 @@ class _DayendDataPageState extends State<DayendDataPage> {
                         await Printing.sharePdf(bytes: await File(filePath).readAsBytes(), filename: 'dayend_report.pdf');
                       },
                       icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
-                      label: const Text('Export to PDF', style: TextStyle(color: Colors.white)),
+                      label: const Text('PDF', style: TextStyle(color: Colors.white)),
                       style: ElevatedButton.styleFrom(
                         foregroundColor: Colors.white, backgroundColor: Colors.red, // text color
                         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                       ),
                     ),
 
-                    const SizedBox(width: 36),  // Horizontal space between buttons
+                    const SizedBox(width: 36),
                     // Excel Export Button
                     ElevatedButton.icon(
                       onPressed: () async {
@@ -2949,14 +3083,14 @@ class _DayendDataPageState extends State<DayendDataPage> {
                         _showDialog(context, 'Excel File Saved', 'File saved at: $filePath');
                       },
                       icon: const Icon(Icons.grid_on, color: Colors.white),
-                      label: const Text('Export to Excel', style: TextStyle(color: Colors.white)),
+                      label: const Text('Excel', style: TextStyle(color: Colors.white)),
                       style: ElevatedButton.styleFrom(
                         foregroundColor: Colors.white, backgroundColor: Colors.green, // text color
                         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0), // padding
                       ),
                     )
-,
-                    const SizedBox(width: 36),  // Horizontal space between buttons
+                    ,
+                    const SizedBox(width: 36),
                     // Reprint Button
                     ElevatedButton.icon(
                       onPressed: () async {
@@ -2966,7 +3100,7 @@ class _DayendDataPageState extends State<DayendDataPage> {
                       icon: const Icon(Icons.grid_on, color: Colors.white),
                       label: const Text('Re-print', style: TextStyle(color: Colors.white)),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.black26, // background color
+                        backgroundColor: Colors.black26,
                       ),
                     ),
 
@@ -3011,7 +3145,7 @@ class _DayendDataPageState extends State<DayendDataPage> {
           ),
 
           // Printer icon visible only if the previous date is selected and data is available
-        /*  if (dateType == 'previousdate' && date != null && date.isNotEmpty)
+          /*  if (dateType == 'previousdate' && date != null && date.isNotEmpty)
             IconButton(
               icon: Icon(Icons.print),
               onPressed: () async {
@@ -3114,7 +3248,6 @@ class _DayendDataPageState extends State<DayendDataPage> {
       ),
     );
   }
-
   Widget _buildTaxData() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -3152,8 +3285,6 @@ class _DayendDataPageState extends State<DayendDataPage> {
       ),
     );
   }
-
-
   List<Widget> _buildGroupedTaxNames(String? taxNames) {
     if (taxNames == null || taxNames.isEmpty) {
       return [Text('No tax names available', style: TextStyle(fontSize: 14))];
@@ -3237,24 +3368,17 @@ class _DayendDataPageState extends State<DayendDataPage> {
 
     return taxWidgets;
   }
-
-
-
-
-
-
   Widget _buildSalesRow(String label, String? value, {bool grandTotal = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          // Label Text (Grand Total will have font size 16)
           Text(
             label,
             style: TextStyle(
-              fontSize: grandTotal ? 16 : 14,  // Grand Total label font size = 16, others = 14
-              fontWeight: grandTotal ? FontWeight.bold : FontWeight.w500,  // Bold for Grand Total, normal for others
+              fontSize: grandTotal ? 16 : 14,
+              fontWeight: grandTotal ? FontWeight.bold : FontWeight.w500,
             ),
           ),
           const SizedBox(width: 8),
@@ -3262,13 +3386,13 @@ class _DayendDataPageState extends State<DayendDataPage> {
             child: Align(
               alignment: Alignment.centerRight,
               child: Padding(
-                padding: const EdgeInsets.only(right: 20.0),  // Adjust padding to fit layout
+                padding: const EdgeInsets.only(right: 20.0),
                 child: Text(
-                  value ?? 'N/A',
+                  value ?? '0.00',
                   style: TextStyle(
-                    fontSize: grandTotal ? 16 : 14,  // Grand Total value font size = 16, others = 14
-                    fontWeight: grandTotal ? FontWeight.bold : FontWeight.w500,  // Bold for Grand Total, normal for others
-                    color: grandTotal ? Colors.black : Colors.black54,  // Black for Grand Total, lighter for others
+                    fontSize: grandTotal ? 16 : 14,
+                    fontWeight: grandTotal ? FontWeight.bold : FontWeight.w500,
+                    color: grandTotal ? Colors.black : Colors.black54,
                   ),
                 ),
               ),
@@ -3278,14 +3402,12 @@ class _DayendDataPageState extends State<DayendDataPage> {
       ),
     );
   }
-
   Widget _buildGroupDetails() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Row for Group, Subtotal, NetTotal (no extra divider)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -3294,16 +3416,13 @@ class _DayendDataPageState extends State<DayendDataPage> {
               Expanded(child: Text('NetTotal', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold), textAlign: TextAlign.end)),
             ],
           ),
-          const Divider(color: Colors.grey, thickness: 1),  // Divider between headers and rows
+          const Divider(color: Colors.grey, thickness: 1),
 
-          // Food details
           _buildGroupRow('Food', data['foodsubtotal'], data['foodnettotal']),
 
-          // Liquor details
           _buildGroupRow('Liquor', data['liquorsubtotal'], data['liquornettotal']),
 
-          // Add extra space after Liquor
-          SizedBox(height: 76),  // Adds space between Liquor section and subsequent content
+          SizedBox(height: 76),
         ],
       ),
     );
