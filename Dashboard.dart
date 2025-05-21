@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import 'SidePanel.dart';
 import 'main.dart';
 import 'package:merchant/TotalSalesReport.dart';
-import 'package:merchant/TotalSalesReport.dart';
+import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 class Dashboard extends ConsumerStatefulWidget {
   final Map<String, String> dbToBrandMap;
@@ -65,13 +65,17 @@ class _DashboardState extends ConsumerState<Dashboard> {
       slot.dineInSales.round(),
       slot.takeAwaySales.round(),
       slot.deliverySales.round(),
+      slot.onlineSales.round(),
     )).toList();
   }
 
   List<ChartLineData> get lineData {
     return timeslotSalesList.map((slot) => ChartLineData(
       slot.timeslot,
-      [slot.dineInSales.round(), slot.takeAwaySales.round(), slot.deliverySales.round()],
+      slot.dineInSales.round(),
+      slot.takeAwaySales.round(),
+      slot.deliverySales.round(),
+      slot.onlineSales.round(),
     )).toList();
   }
   @override
@@ -81,6 +85,7 @@ class _DashboardState extends ConsumerState<Dashboard> {
     selectedDateRange = DateTimeRange(start: today, end: today);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       fetchTotalSales();
+      fetchTimeslotSales();
     });
   }
 
@@ -389,6 +394,7 @@ class _DashboardState extends ConsumerState<Dashboard> {
                             ? DateFormat('dd-MM-yyyy').format(selectedDateRange!.end)
                             : DateFormat('dd-MM-yyyy').format(DateTime.now());
                         await fetchTotalSales();
+                        await fetchTimeslotSales();
                       },
                     ),
                   ),
@@ -411,6 +417,7 @@ class _DashboardState extends ConsumerState<Dashboard> {
                       await fetchTotalSales(
 
                       );
+                      await fetchTimeslotSales();
                     }
                   },
                 ),
@@ -425,7 +432,7 @@ class _DashboardState extends ConsumerState<Dashboard> {
                     final endDate = selectedDateRange != null
                         ? DateFormat('dd-MM-yyyy').format(selectedDateRange!.end)
                         : DateFormat('dd-MM-yyyy').format(DateTime.now());
-                    await fetchTotalSales();                  },
+                    await fetchTotalSales();       await fetchTimeslotSales();           },
                 ),
               ],
             ),
@@ -544,13 +551,17 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                       const SizedBox(width: 4),
                                       const Text("Dine In", style: TextStyle(fontSize: 13)),
                                       const SizedBox(width: 14),
-                                      _legendDot(Colors.cyan[400]!),
+                                      _legendDot(Colors.cyan),
                                       const SizedBox(width: 4),
                                       const Text("TAKE AWAY", style: TextStyle(fontSize: 13)),
                                       const SizedBox(width: 14),
-                                      _legendDot(Colors.green[700]!),
+                                      _legendDot(Colors.green),
                                       const SizedBox(width: 4),
                                       const Text("Delivery", style: TextStyle(fontSize: 13)),
+                                      const SizedBox(width: 14),
+                                      _legendDot(Colors.orange),
+                                      const SizedBox(width: 4),
+                                      const Text("Online", style: TextStyle(fontSize: 13)),
                                     ],
                                   ),
                                 ),
@@ -560,7 +571,7 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                       ? const Center(child: CircularProgressIndicator())
                                       : (chartType == "Bar Chart"
                                       ? _SalesBarChartWidget(data: barData, key: chartKey)
-                                      : _SalesLineChartWidget(data: lineData, key: chartKey)),
+                                      : SalesLineChartWidget(data: lineData, key: chartKey)),
                                 ),
                               ],
                             ),
@@ -1261,6 +1272,7 @@ class _DashboardState extends ConsumerState<Dashboard> {
   }}
 
 
+
 class _SalesBarChartWidget extends StatelessWidget {
   final List<ChartBarData> data;
   const _SalesBarChartWidget({super.key, required this.data});
@@ -1268,144 +1280,338 @@ class _SalesBarChartWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (data.isEmpty) {
-      return SizedBox(height: 120, child: Center(child: Text("No Data")));
+      return const SizedBox(height: 180, child: Center(child: Text("No Data")));
     }
-    // Find the max for scaling
-    double max = data
-        .expand((d) => [d.dineIn, d.takeAway, d.delivery])
+    double maxY = data
+        .expand((d) => [d.dineIn, d.takeAway, d.delivery, d.online])
         .fold(0, (a, b) => a > b ? a : b)
         .toDouble();
+    maxY = maxY > 0 ? maxY * 1.25 : 100;
 
     return SizedBox(
-      height: 220,
+      height: 250,
       child: BarChart(
         BarChartData(
           alignment: BarChartAlignment.spaceAround,
-          maxY: (max * 1.2).clamp(10, 100000),
+          maxY: maxY,
           barGroups: List.generate(data.length, (i) {
             final d = data[i];
             return BarChartGroupData(
               x: i,
               barRods: [
-                BarChartRodData(toY: d.dineIn.toDouble(), width: 10, color: Colors.blue),
-                BarChartRodData(toY: d.takeAway.toDouble(), width: 10, color: Colors.cyan),
-                BarChartRodData(toY: d.delivery.toDouble(), width: 10, color: Colors.green),
+                BarChartRodData(
+                  toY: d.dineIn.toDouble(),
+                  width: 16,
+                  color: Colors.blue,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                BarChartRodData(
+                  toY: d.takeAway.toDouble(),
+                  width: 16,
+                  color: Colors.cyan,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                BarChartRodData(
+                  toY: d.delivery.toDouble(),
+                  width: 16,
+                  color: Colors.green,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                BarChartRodData(
+                  toY: d.online.toDouble(),
+                  width: 16,
+                  color: Colors.orange, // Online color
+                  borderRadius: BorderRadius.circular(4),
+                ),
               ],
-              showingTooltipIndicators: [0, 1, 2],
+              barsSpace: 2,
+              showingTooltipIndicators: [],
             );
           }),
+          gridData: FlGridData(show: false),
+          borderData: FlBorderData(
+            show: true,
+            border: Border(
+              bottom: BorderSide(color: Colors.black26, width: 1),
+              left: BorderSide.none,
+              right: BorderSide.none,
+              top: BorderSide.none,
+            ),
+          ),
           titlesData: FlTitlesData(
+            show: true,
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
+                reservedSize: 38,
                 getTitlesWidget: (double value, meta) {
-                  if (value.toInt() < 0 || value.toInt() >= data.length) return Container();
+                  int idx = value.toInt();
+                  if (idx < 0 || idx >= data.length) return const SizedBox();
                   return Padding(
                     padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(data[value.toInt()].label, style: TextStyle(fontSize: 11)),
+                    child: Text(
+                      data[idx].label,
+                      style: const TextStyle(fontSize: 13, color: Colors.black87),
+                      textAlign: TextAlign.center,
+                    ),
                   );
                 },
               ),
             ),
             leftTitles: AxisTitles(
-              sideTitles: SideTitles(showTitles: true, reservedSize: 36),
+              sideTitles: SideTitles(showTitles: false),
             ),
-            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            topTitles: AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
           ),
-          gridData: FlGridData(show: true),
-          borderData: FlBorderData(show: false),
+          barTouchData: BarTouchData(enabled: false),
         ),
       ),
     );
   }
 }
 
-class _SalesLineChartWidget extends StatelessWidget {
+
+
+class SalesLineChartWidget extends StatelessWidget {
   final List<ChartLineData> data;
-  const _SalesLineChartWidget({super.key, required this.data});
+
+  const SalesLineChartWidget({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
     if (data.isEmpty) {
-      return SizedBox(height: 120, child: Center(child: Text("No Data")));
-    }
-    final spotsDineIn = <FlSpot>[];
-    final spotsTakeAway = <FlSpot>[];
-    final spotsDelivery = <FlSpot>[];
-    for (int i = 0; i < data.length; i++) {
-      spotsDineIn.add(FlSpot(i.toDouble(), data[i].values[0].toDouble()));
-      spotsTakeAway.add(FlSpot(i.toDouble(), data[i].values[1].toDouble()));
-      spotsDelivery.add(FlSpot(i.toDouble(), data[i].values[2].toDouble()));
+      return const SizedBox(height: 180, child: Center(child: Text("No Data")));
     }
 
-    double max = [
-      ...spotsDineIn.map((e) => e.y),
-      ...spotsTakeAway.map((e) => e.y),
-      ...spotsDelivery.map((e) => e.y),
-    ].fold(0.0, (a, b) => a > b ? a : b);
+    // Prepare all lines' spots
+    List<FlSpot> dineSpots = [];
+    List<FlSpot> takeAwaySpots = [];
+    List<FlSpot> deliverySpots = [];
+    List<FlSpot> onlineSpots = [];
+    List<FlSpot> counterSpots = [];
+
+    for (int i = 0; i < data.length; i++) {
+      dineSpots.add(FlSpot(i.toDouble(), data[i].dineIn.toDouble()));
+      takeAwaySpots.add(FlSpot(i.toDouble(), data[i].takeAway.toDouble()));
+      deliverySpots.add(FlSpot(i.toDouble(), data[i].delivery.toDouble()));
+      onlineSpots.add(FlSpot(i.toDouble(), data[i].online.toDouble()));
+    }
+
+    // Find max Y for all lines for scaling
+    double maxY = [
+      ...dineSpots, ...takeAwaySpots, ...deliverySpots, ...onlineSpots, ...counterSpots
+    ].map((e) => e.y).fold(0.0, (a, b) => a > b ? a : b) * 1.25;
+    if (maxY == 0) maxY = 100;
+
+    // Compute label stride: Show max 8 labels (spaced)
+    int labelStride = 1;
+    if (data.length > 8) {
+      labelStride = (data.length / 8.0).ceil();
+    }
+
+    final lines = [
+      LineChartBarData(
+        spots: dineSpots,
+        isCurved: true,
+        color: Colors.blue,
+        barWidth: 3,
+        isStrokeCapRound: true,
+        dotData: FlDotData(show: false),
+        belowBarData: BarAreaData(show: false),
+      ),
+      LineChartBarData(
+        spots: takeAwaySpots,
+        isCurved: true,
+        color: Colors.cyan,
+        barWidth: 3,
+        isStrokeCapRound: true,
+        dotData: FlDotData(show: false),
+        belowBarData: BarAreaData(show: false),
+      ),
+      LineChartBarData(
+        spots: deliverySpots,
+        isCurved: true,
+        color: Color(0xFF63B32D),
+        barWidth: 3,
+        isStrokeCapRound: true,
+        dotData: FlDotData(show: false),
+        belowBarData: BarAreaData(show: false),
+      ),
+      LineChartBarData(
+        spots: onlineSpots,
+        isCurved: true,
+        color: Colors.orange,
+        barWidth: 3,
+        isStrokeCapRound: true,
+        dotData: FlDotData(show: false),
+        belowBarData: BarAreaData(show: false),
+      ),
+      LineChartBarData(
+        spots: counterSpots,
+        isCurved: true,
+        color: Colors.purple,
+        barWidth: 3,
+        isStrokeCapRound: true,
+        dotData: FlDotData(show: false),
+        belowBarData: BarAreaData(show: false),
+      ),
+    ];
 
     return SizedBox(
-      height: 220,
+      height: 280,
       child: LineChart(
         LineChartData(
-          maxY: (max * 1.2).clamp(10, 100000),
+          lineBarsData: lines,
+          minY: 0,
+          maxY: maxY,
+          gridData: FlGridData(show: false),
+          borderData: FlBorderData(
+            show: true,
+            border: Border(
+              bottom: BorderSide(color: Colors.black26, width: 1),
+              left: BorderSide.none,
+              right: BorderSide.none,
+              top: BorderSide.none,
+            ),
+          ),
           titlesData: FlTitlesData(
+            show: true,
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 44,
+                getTitlesWidget: (double value, meta) {
+                  if (maxY == 0) return const SizedBox();
+                  double step = maxY / 4;
+                  if (step == 0) step = 1;
+                  if (value % step != 0) return const SizedBox();
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: Text(
+                      "${(value / 1000).toStringAsFixed(1)}k",
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF9E9E9E),
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  );
+                },
+                interval: maxY / 4,
+              ),
+            ),
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
+                reservedSize: 40,
                 getTitlesWidget: (double value, meta) {
-                  if (value.toInt() < 0 || value.toInt() >= data.length) return Container();
+                  int idx = value.toInt();
+                  if (idx < 0 || idx >= data.length) return const SizedBox();
+                  if (idx % labelStride != 0) return const SizedBox();
+                  String label = data[idx].label;
+                  // Truncate for safety if needed
+                  if (label.length > 14) label = label.substring(0, 12) + "...";
                   return Padding(
                     padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(data[value.toInt()].label, style: TextStyle(fontSize: 11)),
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF9E9E9E),
+                        fontWeight: FontWeight.w400,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      textAlign: TextAlign.center,
+                    ),
                   );
                 },
               ),
             ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(showTitles: true, reservedSize: 36),
+            rightTitles: AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
             ),
-            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
           ),
-          gridData: FlGridData(show: true),
-          borderData: FlBorderData(show: false),
-          lineBarsData: [
-            LineChartBarData(
-              spots: spotsDineIn,
-              color: Colors.blue,
-              isCurved: true,
-              dotData: FlDotData(show: false),
+          lineTouchData: LineTouchData(
+            enabled: true,
+            handleBuiltInTouches: true,
+            getTouchedSpotIndicator: (barData, spotIndexes) {
+              return spotIndexes.map((spotIdx) {
+                return TouchedSpotIndicatorData(
+                  FlLine(color: Colors.transparent),
+                  FlDotData(
+                    show: true,
+                    getDotPainter: (spot, percent, bar, idx) {
+                      // Circle with white outline
+                      return FlDotCirclePainter(
+                        radius: 8,
+                        color: bar.color ?? Colors.blue,
+                        strokeWidth: 3,
+                        strokeColor: Colors.white,
+                      );
+                    },
+                  ),
+                );
+              }).toList();
+            },
+            touchTooltipData: LineTouchTooltipData(
+              tooltipBgColor: Colors.white,
+              tooltipRoundedRadius: 8,
+              tooltipPadding: const EdgeInsets.all(10),
+              fitInsideHorizontally: true,
+              fitInsideVertically: true,
+              getTooltipItems: (touchedSpots) {
+                if (touchedSpots.isEmpty) return [];
+                final idx = touchedSpots.first.x.toInt();
+                if (idx < 0 || idx >= data.length) return [];
+                final d = data[idx];
+                return [
+                  LineTooltipItem(
+                    '${d.label}\n'
+                        'Dine In : ₹ ${d.dineIn}\n'
+                        'TAKE AWAY : ₹ ${d.takeAway}\n'
+                        'Delivery : ₹ ${d.delivery}\n'
+                        'Online : ₹ ${d.online}\n'
+                        'Total : ₹ ${d.dineIn + d.takeAway + d.delivery + d.online}',
+                    const TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
+                    ),
+                  ),
+                ];
+              },
             ),
-            LineChartBarData(
-              spots: spotsTakeAway,
-              color: Colors.cyan,
-              isCurved: true,
-              dotData: FlDotData(show: false),
-            ),
-            LineChartBarData(
-              spots: spotsDelivery,
-              color: Colors.green,
-              isCurved: true,
-              dotData: FlDotData(show: false),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
+
 class ChartBarData {
   final String label;
   final int dineIn;
   final int takeAway;
   final int delivery;
-  ChartBarData(this.label, this.dineIn, this.takeAway, this.delivery);
+  final int online; // add this!
+
+  ChartBarData(this.label, this.dineIn, this.takeAway, this.delivery, this.online);
 }
 
 class ChartLineData {
   final String label;
-  final List<int> values;
-  ChartLineData(this.label, this.values);
+  final int dineIn;
+  final int takeAway;
+  final int delivery;
+  final int online;
+  ChartLineData(this.label, this.dineIn, this.takeAway, this.delivery, this.online);
 }
