@@ -78,6 +78,85 @@ class _DashboardState extends ConsumerState<Dashboard> {
       slot.onlineSales.round(),
     )).toList();
   }
+
+
+  // Add in your state:
+  String quickDateLabel = "Today";
+  DateTimeRange? selectedQuickDateRange;
+
+  void onQuickDateSelected(String label) async {
+    DateTime now = DateTime.now();
+    DateTime start, end;
+    switch (label) {
+      case "Today":
+        start = end = DateTime(now.year, now.month, now.day);
+        break;
+      case "Yesterday":
+        start = end = DateTime(now.year, now.month, now.day).subtract(Duration(days: 1));
+        break;
+      case "Last 7 Days":
+        end = DateTime(now.year, now.month, now.day);
+        start = end.subtract(Duration(days: 6));
+        break;
+      case "Last 30 Days":
+        end = DateTime(now.year, now.month, now.day);
+        start = end.subtract(Duration(days: 29));
+        break;
+      case "This Month":
+        start = DateTime(now.year, now.month, 1);
+        end = DateTime(now.year, now.month, now.day);
+        break;
+      case "Last Month":
+        DateTime firstDayThisMonth = DateTime(now.year, now.month, 1);
+        DateTime lastDayLastMonth = firstDayThisMonth.subtract(Duration(days: 1));
+        start = DateTime(lastDayLastMonth.year, lastDayLastMonth.month, 1);
+        end = DateTime(lastDayLastMonth.year, lastDayLastMonth.month, lastDayLastMonth.day);
+        break;
+      case "Custom Range":
+      // Show popup date range picker (white, not fullscreen)
+        DateTimeRange? picked = await showDialog<DateTimeRange>(
+          context: context,
+          builder: (context) => Center(
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 350,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: CalendarDateRangePicker(
+                  initialRange: selectedQuickDateRange ?? DateTimeRange(start: now, end: now),
+                  onRangeSelected: (range) {
+                    Navigator.of(context).pop(range);
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+        if (picked != null) {
+          setState(() {
+            quickDateLabel = "Custom Range";
+            selectedQuickDateRange = picked;
+            selectedDateRange = picked;
+          });
+          await fetchTotalSales();
+          await fetchTimeslotSales();
+        }
+        return;
+      default:
+        return;
+    }
+    setState(() {
+      quickDateLabel = label;
+      selectedQuickDateRange = DateTimeRange(start: start, end: end);
+      selectedDateRange = DateTimeRange(start: start, end: end);
+    });
+    await fetchTotalSales();
+    await fetchTimeslotSales();
+  }
   @override
   void initState() {
     super.initState();
@@ -400,26 +479,50 @@ class _DashboardState extends ConsumerState<Dashboard> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.calendar_today, size: 18, color: Colors.black54),
-                  label: Text(selectedDate, style: const TextStyle(color: Colors.black87)),
-                  onPressed: () async {
-                    final picked = await showDateRangePicker(
-                      context: context,
-                      initialDateRange: selectedDateRange,
-                      firstDate: DateTime(2021),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) {
-                      setState(() {
-                        selectedDateRange = picked;
-                      });
-                      await fetchTotalSales(
-
-                      );
-                      await fetchTimeslotSales();
-                    }
-                  },
+                PopupMenuButton<String>(
+                  offset: const Offset(0, 45),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  color: Colors.white,
+                  padding: EdgeInsets.zero,
+                  onSelected: onQuickDateSelected,
+                  itemBuilder: (context) => [
+                    for (final label in [
+                      "Today", "Yesterday", "Last 7 Days", "Last 30 Days", "This Month", "Last Month", "Custom Range"
+                    ])
+                      PopupMenuItem<String>(
+                        value: label,
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            fontWeight: quickDateLabel == label ? FontWeight.bold : FontWeight.normal,
+                            color: quickDateLabel == label ? Colors.black : Colors.grey[700],
+                          ),
+                        ),
+                      ),
+                  ],
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          quickDateLabel == "Custom Range" && selectedQuickDateRange != null
+                              ? "${DateFormat('dd MMM').format(selectedQuickDateRange!.start)} - ${DateFormat('dd MMM').format(selectedQuickDateRange!.end)}"
+                              : quickDateLabel == "Today"
+                              ? DateFormat('dd MMM').format(DateTime.now())
+                              : quickDateLabel,
+                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.black54),
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton.icon(
@@ -521,16 +624,50 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                         ),
                                       ),
                                     ),
-                                    OutlinedButton.icon(
-                                      icon: const Icon(Icons.calendar_today, size: 18, color: Colors.black54),
-                                      label: Text(selectedDate, style: const TextStyle(color: Colors.black87)),
-                                      style: OutlinedButton.styleFrom(
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
-                                        side: const BorderSide(color: Color(0xFFD5282B)),
-                                        backgroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                    PopupMenuButton<String>(
+                                      offset: const Offset(0, 45),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      color: Colors.white,
+                                      padding: EdgeInsets.zero,
+                                      onSelected: onQuickDateSelected,
+                                      itemBuilder: (context) => [
+                                        for (final label in [
+                                          "Today", "Yesterday", "Last 7 Days", "Last 30 Days", "This Month", "Last Month", "Custom Range"
+                                        ])
+                                          PopupMenuItem<String>(
+                                            value: label,
+                                            child: Text(
+                                              label,
+                                              style: TextStyle(
+                                                fontWeight: quickDateLabel == label ? FontWeight.bold : FontWeight.normal,
+                                                color: quickDateLabel == label ? Colors.black : Colors.grey[700],
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          border: Border.all(color: Colors.grey.shade300),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              quickDateLabel == "Custom Range" && selectedQuickDateRange != null
+                                                  ? "${DateFormat('dd MMM').format(selectedQuickDateRange!.start)} - ${DateFormat('dd MMM').format(selectedQuickDateRange!.end)}"
+                                                  : quickDateLabel == "Today"
+                                                  ? DateFormat('dd MMM').format(DateTime.now())
+                                                  : quickDateLabel,
+                                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.black54),
+                                          ],
+                                        ),
                                       ),
-                                      onPressed: () {},
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.refresh, color: Colors.black54),
@@ -599,16 +736,50 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                   children: [
                                     const Text("Online Orders", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                                     const Spacer(),
-                                    OutlinedButton.icon(
-                                      icon: const Icon(Icons.calendar_today, size: 18, color: Colors.black54),
-                                      label: Text(selectedDate, style: const TextStyle(color: Colors.black87)),
-                                      style: OutlinedButton.styleFrom(
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
-                                        side: const BorderSide(color: Color(0xFFD5282B)),
-                                        backgroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                    PopupMenuButton<String>(
+                                      offset: const Offset(0, 45),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      color: Colors.white,
+                                      padding: EdgeInsets.zero,
+                                      onSelected: onQuickDateSelected,
+                                      itemBuilder: (context) => [
+                                        for (final label in [
+                                          "Today", "Yesterday", "Last 7 Days", "Last 30 Days", "This Month", "Last Month", "Custom Range"
+                                        ])
+                                          PopupMenuItem<String>(
+                                            value: label,
+                                            child: Text(
+                                              label,
+                                              style: TextStyle(
+                                                fontWeight: quickDateLabel == label ? FontWeight.bold : FontWeight.normal,
+                                                color: quickDateLabel == label ? Colors.black : Colors.grey[700],
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          border: Border.all(color: Colors.grey.shade300),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              quickDateLabel == "Custom Range" && selectedQuickDateRange != null
+                                                  ? "${DateFormat('dd MMM').format(selectedQuickDateRange!.start)} - ${DateFormat('dd MMM').format(selectedQuickDateRange!.end)}"
+                                                  : quickDateLabel == "Today"
+                                                  ? DateFormat('dd MMM').format(DateTime.now())
+                                                  : quickDateLabel,
+                                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.black54),
+                                          ],
+                                        ),
                                       ),
-                                      onPressed: () {},
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.refresh, color: Colors.black54),
@@ -730,16 +901,50 @@ class _DashboardState extends ConsumerState<Dashboard> {
                                   children: [
                                     const Text("Payment Bifurcation", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                                     const Spacer(),
-                                    OutlinedButton.icon(
-                                      icon: const Icon(Icons.calendar_today, size: 18, color: Colors.black54),
-                                      label: Text(selectedDate, style: const TextStyle(color: Colors.black87)),
-                                      style: OutlinedButton.styleFrom(
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
-                                        side: const BorderSide(color: Color(0xFFD5282B)),
-                                        backgroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                    PopupMenuButton<String>(
+                                      offset: const Offset(0, 45),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      color: Colors.white,
+                                      padding: EdgeInsets.zero,
+                                      onSelected: onQuickDateSelected,
+                                      itemBuilder: (context) => [
+                                        for (final label in [
+                                          "Today", "Yesterday", "Last 7 Days", "Last 30 Days", "This Month", "Last Month", "Custom Range"
+                                        ])
+                                          PopupMenuItem<String>(
+                                            value: label,
+                                            child: Text(
+                                              label,
+                                              style: TextStyle(
+                                                fontWeight: quickDateLabel == label ? FontWeight.bold : FontWeight.normal,
+                                                color: quickDateLabel == label ? Colors.black : Colors.grey[700],
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          border: Border.all(color: Colors.grey.shade300),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              quickDateLabel == "Custom Range" && selectedQuickDateRange != null
+                                                  ? "${DateFormat('dd MMM').format(selectedQuickDateRange!.start)} - ${DateFormat('dd MMM').format(selectedQuickDateRange!.end)}"
+                                                  : quickDateLabel == "Today"
+                                                  ? DateFormat('dd MMM').format(DateTime.now())
+                                                  : quickDateLabel,
+                                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.black54),
+                                          ],
+                                        ),
                                       ),
-                                      onPressed: () {},
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.refresh, color: Colors.black54),
@@ -997,33 +1202,49 @@ class _DashboardState extends ConsumerState<Dashboard> {
                 children: [
                   SizedBox(
                     height: isMobile ? 36 : 38,
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: Size(isMobile ? 90 : 100, 36),
-                        backgroundColor: Colors.white,
-                        side: BorderSide(
-                          color: Colors.grey[300]!,
-                        ),
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          chartKey = UniqueKey();
-                        });
-                      },
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            DateFormat('d MMM').format(DateTime.now()),
-                            style: TextStyle(
-                              fontSize: isMobile ? 13 : 15,
-                              color: Colors.black87,
-                              fontWeight: FontWeight.w500,
+                    child: PopupMenuButton<String>(
+                      offset: const Offset(0, 45),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      color: Colors.white,
+                      padding: EdgeInsets.zero,
+                      onSelected: onQuickDateSelected,
+                      itemBuilder: (context) => [
+                        for (final label in [
+                          "Today", "Yesterday", "Last 7 Days", "Last 30 Days", "This Month", "Last Month", "Custom Range"
+                        ])
+                          PopupMenuItem<String>(
+                            value: label,
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                fontWeight: quickDateLabel == label ? FontWeight.bold : FontWeight.normal,
+                                color: quickDateLabel == label ? Colors.black : Colors.grey[700],
+                              ),
                             ),
                           ),
-                          const SizedBox(width: 3),
-                          const Icon(Icons.refresh, size: 18, color: Colors.black54),
-                        ],
+                      ],
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              quickDateLabel == "Custom Range" && selectedQuickDateRange != null
+                                  ? "${DateFormat('dd MMM').format(selectedQuickDateRange!.start)} - ${DateFormat('dd MMM').format(selectedQuickDateRange!.end)}"
+                                  : quickDateLabel == "Today"
+                                  ? DateFormat('dd MMM').format(DateTime.now())
+                                  : quickDateLabel,
+                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.black54),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1165,16 +1386,23 @@ class _DashboardState extends ConsumerState<Dashboard> {
     );
   }
 
+  bool showOutletStatsTable = true; // in your _DashboardState
+
   Widget _buildOutletwiseStatisticsTable(BuildContext context, {required bool isMobile}) {
-    // Build a list from dbToBrandMap and totalSalesResponses, one entry for each outlet
+    // --- Build outlets data as before ---
     final outlets = <Map<String, String>>[];
 
-    // Determine the "Total" row (all outlets merged)
+    // Add "Total" row first
     String totalOrders = getField("occupiedTableCount", fallback: "0");
     String totalSales = getField("grandTotal", fallback: "0.00");
     String totalNetSales = getField("netTotal", fallback: "0.00");
     String totalTax = getField("billTax", fallback: "0.00");
     String totalDiscount = getField("billDiscount", fallback: "0.00");
+    String totalModified = getField("modifiedCount", fallback: "0");
+    String totalReprinted = getField("reprintCount", fallback: "0");
+    String totalWaivedOff = getField("waivedOff", fallback: "0.00");
+    String totalRoundOff = getField("roundOff", fallback: "0.00");
+    String totalCharges = getField("charges", fallback: "0.00");
 
     outlets.add({
       "Outlet Name": "Total",
@@ -1183,9 +1411,13 @@ class _DashboardState extends ConsumerState<Dashboard> {
       "Net Sales": totalNetSales,
       "Tax": totalTax,
       "Discount": totalDiscount,
+      "Modified": totalModified,
+      "Re-Printed": totalReprinted,
+      "Waived Off": totalWaivedOff,
+      "Round Off": totalRoundOff,
+      "Charges": totalCharges,
+      "": "", // for menu column
     });
-
-    print("Total Sales (All Outlets): $totalSales");
 
     // Individual outlets
     widget.dbToBrandMap.forEach((dbKey, outletName) {
@@ -1195,6 +1427,11 @@ class _DashboardState extends ConsumerState<Dashboard> {
       final outletNetSales = report?.getField("netTotal", fallback: "0.00") ?? "0.00";
       final outletTax = report?.getField("billTax", fallback: "0.00") ?? "0.00";
       final outletDiscount = report?.getField("billDiscount", fallback: "0.00") ?? "0.00";
+      final outletModified = report?.getField("modifiedCount", fallback: "0") ?? "0";
+      final outletReprinted = report?.getField("reprintCount", fallback: "0") ?? "0";
+      final outletWaivedOff = report?.getField("waivedOff", fallback: "0.00") ?? "0.00";
+      final outletRoundOff = report?.getField("roundOff", fallback: "0.00") ?? "0.00";
+      final outletCharges = report?.getField("charges", fallback: "0.00") ?? "0.00";
 
       outlets.add({
         "Outlet Name": outletName,
@@ -1203,75 +1440,155 @@ class _DashboardState extends ConsumerState<Dashboard> {
         "Net Sales": outletNetSales,
         "Tax": outletTax,
         "Discount": outletDiscount,
+        "Modified": outletModified,
+        "Re-Printed": outletReprinted,
+        "Waived Off": outletWaivedOff,
+        "Round Off": outletRoundOff,
+        "Charges": outletCharges,
+        "": "",
       });
-
-      print("Sales for $outletName: $outletSales");
     });
+
+    // --- Table columns order to match screenshot ---
+    final columns = [
+      "Outlet Name",
+      "Orders",
+      "Sales",
+      "Net Sales",
+      "Tax",
+      "Discount",
+      "Modified",
+      "Re-Printed",
+      "Waived Off",
+      "Round Off",
+      "Charges",
+      "",
+    ];
 
     return Card(
       elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       color: Colors.white,
       child: Column(
         children: [
-          const ListTile(
-            title: Text(
-              "Outlet Wise Statistics",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minWidth: isMobile ? 500 : 0,
-              ),
-              child: DataTable(
-                columnSpacing: isMobile ? 8 : 18,
-                headingRowHeight: isMobile ? 34 : 44,
-                dataRowHeight: isMobile ? 34 : 48,
-                columns: outlets.first.keys
-                    .map((key) => DataColumn(
-                  label: Text(
-                    key,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    "Outlet Wise Statistics",
                     style: TextStyle(
-                      fontSize: isMobile ? 11 : 14,
-                      fontWeight: FontWeight.w600,
-                      overflow: TextOverflow.ellipsis,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 17,
                     ),
                   ),
-                ))
-                    .toList(),
-                rows: outlets
-                    .map(
-                      (outlet) => DataRow(
-                    cells: outlet.values
-                        .map(
-                          (value) => DataCell(
-                        SizedBox(
-                          width: isMobile ? 90 : 135,
-                          child: Text(
-                            value,
-                            style: TextStyle(fontSize: isMobile ? 10 : 13),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    )
-                        .toList(),
+                ),
+                IconButton(
+                  icon: Icon(
+                    showOutletStatsTable ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.grey,
                   ),
-                )
-                    .toList(),
-              ),
+                  tooltip: showOutletStatsTable ? "Collapse" : "Expand",
+                  onPressed: () {
+                    setState(() {
+                      showOutletStatsTable = !showOutletStatsTable;
+                    });
+                  },
+                ),
+              ],
             ),
           ),
+          if (showOutletStatsTable)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: isMobile ? 800 : 1050),
+                child: DataTable(
+                  headingRowColor: MaterialStateProperty.all(const Color(0xFFEAF3FF)), // solid blue header
+                  columnSpacing: isMobile ? 12 : 20,
+                  headingRowHeight: isMobile ? 38 : 44,
+                  dataRowHeight: isMobile ? 38 : 48,
+                  showCheckboxColumn: false,
+                  columns: columns.map((key) {
+                    return DataColumn(
+                      label: Row(
+                        children: [
+                          Text(
+                            key,
+                            style: TextStyle(
+                              fontSize: isMobile ? 12 : 14,
+                              fontWeight: FontWeight.w600,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (key != "" && key != "Outlet Name")
+                            const Icon(Icons.unfold_more, size: 16, color: Color(0xFFB0BEC5)),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  rows: outlets.map((outlet) {
+                    final isTotal = outlet["Outlet Name"] == "Total";
+                    return DataRow(
+                      cells: columns.map((key) {
+                        final isMenu = key == "";
+                        final value = outlet[key] ?? '';
+                        Widget cellWidget;
+
+                        if (isMenu) {
+                          cellWidget = IconButton(
+                            icon: const Icon(Icons.more_vert, size: 22, color: Colors.grey),
+                            onPressed: () {},
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          );
+                        } else if (key == "Outlet Name" && value != "Total") {
+                          cellWidget = Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  value,
+                                  style: TextStyle(
+                                    fontSize: isMobile ? 12 : 13,
+                                    fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 3),
+                              const Icon(Icons.open_in_new, size: 16, color: Color(0xFF90A4AE)),
+                            ],
+                          );
+                        } else {
+                          cellWidget = Text(
+                            value,
+                            style: TextStyle(
+                              fontSize: isMobile ? 12 : 13,
+                              fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }
+
+                        return DataCell(
+                          Container(
+                            width: isMobile ? 90 : 120,
+                            child: cellWidget,
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
         ],
       ),
     );
-  }}
+  }
 
-
+}
 
 class _SalesBarChartWidget extends StatelessWidget {
   final List<ChartBarData> data;
@@ -1379,7 +1696,6 @@ class _SalesBarChartWidget extends StatelessWidget {
 
 class SalesLineChartWidget extends StatelessWidget {
   final List<ChartLineData> data;
-
   const SalesLineChartWidget({super.key, required this.data});
 
   @override
@@ -1388,13 +1704,11 @@ class SalesLineChartWidget extends StatelessWidget {
       return const SizedBox(height: 180, child: Center(child: Text("No Data")));
     }
 
-    // Prepare all lines' spots
+    // Prepare line spots
     List<FlSpot> dineSpots = [];
     List<FlSpot> takeAwaySpots = [];
     List<FlSpot> deliverySpots = [];
     List<FlSpot> onlineSpots = [];
-    List<FlSpot> counterSpots = [];
-
     for (int i = 0; i < data.length; i++) {
       dineSpots.add(FlSpot(i.toDouble(), data[i].dineIn.toDouble()));
       takeAwaySpots.add(FlSpot(i.toDouble(), data[i].takeAway.toDouble()));
@@ -1404,191 +1718,207 @@ class SalesLineChartWidget extends StatelessWidget {
 
     // Find max Y for all lines for scaling
     double maxY = [
-      ...dineSpots, ...takeAwaySpots, ...deliverySpots, ...onlineSpots, ...counterSpots
-    ].map((e) => e.y).fold(0.0, (a, b) => a > b ? a : b) * 1.25;
-    if (maxY == 0) maxY = 100;
+      ...dineSpots, ...takeAwaySpots, ...deliverySpots, ...onlineSpots,
+    ].map((e) => e.y).fold(0.0, (a, b) => a > b ? a : b);
+    if (maxY < 100) maxY = 100;
+    int yStep = maxY > 10000 ? 5000 : 1000;
+    maxY = (((maxY / yStep).ceil()) * yStep).toDouble();
 
-    // Compute label stride: Show max 8 labels (spaced)
+    // Show at most 6–7 labels: stride
+    int maxLabels = 7;
     int labelStride = 1;
-    if (data.length > 8) {
-      labelStride = (data.length / 8.0).ceil();
+    if (data.length > maxLabels) {
+      labelStride = ((data.length / maxLabels).ceil()) * 2;
     }
 
-    final lines = [
-      LineChartBarData(
-        spots: dineSpots,
-        isCurved: true,
-        color: Colors.blue,
-        barWidth: 3,
-        isStrokeCapRound: true,
-        dotData: FlDotData(show: false),
-        belowBarData: BarAreaData(show: false),
-      ),
-      LineChartBarData(
-        spots: takeAwaySpots,
-        isCurved: true,
-        color: Colors.cyan,
-        barWidth: 3,
-        isStrokeCapRound: true,
-        dotData: FlDotData(show: false),
-        belowBarData: BarAreaData(show: false),
-      ),
-      LineChartBarData(
-        spots: deliverySpots,
-        isCurved: true,
-        color: Color(0xFF63B32D),
-        barWidth: 3,
-        isStrokeCapRound: true,
-        dotData: FlDotData(show: false),
-        belowBarData: BarAreaData(show: false),
-      ),
-      LineChartBarData(
-        spots: onlineSpots,
-        isCurved: true,
-        color: Colors.orange,
-        barWidth: 3,
-        isStrokeCapRound: true,
-        dotData: FlDotData(show: false),
-        belowBarData: BarAreaData(show: false),
-      ),
-      LineChartBarData(
-        spots: counterSpots,
-        isCurved: true,
-        color: Colors.purple,
-        barWidth: 3,
-        isStrokeCapRound: true,
-        dotData: FlDotData(show: false),
-        belowBarData: BarAreaData(show: false),
-      ),
+    // Make chart always at least (data.length * 110) px wide, so each label has space
+    double chartWidth = (data.length * 160).toDouble();
+    if (chartWidth < MediaQuery.of(context).size.width) {
+      chartWidth = MediaQuery.of(context).size.width - 48;
+    }
+
+    List<LineChartBarData> lines = [
+      if (dineSpots.any((e) => e.y > 0))
+        LineChartBarData(
+          spots: dineSpots,
+          isCurved: true,
+          color: Colors.blue,
+          barWidth: 3,
+          isStrokeCapRound: true,
+          dotData: FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ),
+      if (takeAwaySpots.any((e) => e.y > 0))
+        LineChartBarData(
+          spots: takeAwaySpots,
+          isCurved: true,
+          color: Colors.cyan,
+          barWidth: 3,
+          isStrokeCapRound: true,
+          dotData: FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ),
+      if (deliverySpots.any((e) => e.y > 0))
+        LineChartBarData(
+          spots: deliverySpots,
+          isCurved: true,
+          color: const Color(0xFF63B32D),
+          barWidth: 3,
+          isStrokeCapRound: true,
+          dotData: FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ),
+      if (onlineSpots.any((e) => e.y > 0))
+        LineChartBarData(
+          spots: onlineSpots,
+          isCurved: true,
+          color: Colors.orange,
+          barWidth: 3,
+          isStrokeCapRound: true,
+          dotData: FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ),
     ];
 
     return SizedBox(
-      height: 280,
-      child: LineChart(
-        LineChartData(
-          lineBarsData: lines,
-          minY: 0,
-          maxY: maxY,
-          gridData: FlGridData(show: false),
-          borderData: FlBorderData(
-            show: true,
-            border: Border(
-              bottom: BorderSide(color: Colors.black26, width: 1),
-              left: BorderSide.none,
-              right: BorderSide.none,
-              top: BorderSide.none,
-            ),
-          ),
-          titlesData: FlTitlesData(
-            show: true,
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 44,
-                getTitlesWidget: (double value, meta) {
-                  if (maxY == 0) return const SizedBox();
-                  double step = maxY / 4;
-                  if (step == 0) step = 1;
-                  if (value % step != 0) return const SizedBox();
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
-                    child: Text(
-                      "${(value / 1000).toStringAsFixed(1)}k",
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF9E9E9E),
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  );
-                },
-                interval: maxY / 4,
+      height: 320,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: chartWidth,
+          child: LineChart(
+            LineChartData(
+              lineBarsData: lines,
+              minY: 0,
+              maxY: maxY,
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                horizontalInterval: yStep.toDouble(),
+                getDrawingHorizontalLine: (value) => FlLine(
+                  color: const Color(0xFFE0E0E0),
+                  strokeWidth: 1,
+                ),
               ),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 40,
-                getTitlesWidget: (double value, meta) {
-                  int idx = value.toInt();
-                  if (idx < 0 || idx >= data.length) return const SizedBox();
-                  if (idx % labelStride != 0) return const SizedBox();
-                  String label = data[idx].label;
-                  // Truncate for safety if needed
-                  if (label.length > 14) label = label.substring(0, 12) + "...";
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(
-                      label,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF9E9E9E),
-                        fontWeight: FontWeight.w400,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                      textAlign: TextAlign.center,
-                    ),
-                  );
-                },
+              borderData: FlBorderData(
+                show: true,
+                border: Border(
+                  bottom: BorderSide(color: Colors.black26, width: 1),
+                  left: BorderSide.none,
+                  right: BorderSide.none,
+                  top: BorderSide.none,
+                ),
               ),
-            ),
-            rightTitles: AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            topTitles: AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-          ),
-          lineTouchData: LineTouchData(
-            enabled: true,
-            handleBuiltInTouches: true,
-            getTouchedSpotIndicator: (barData, spotIndexes) {
-              return spotIndexes.map((spotIdx) {
-                return TouchedSpotIndicatorData(
-                  FlLine(color: Colors.transparent),
-                  FlDotData(
-                    show: true,
-                    getDotPainter: (spot, percent, bar, idx) {
-                      // Circle with white outline
-                      return FlDotCirclePainter(
-                        radius: 8,
-                        color: bar.color ?? Colors.blue,
-                        strokeWidth: 3,
-                        strokeColor: Colors.white,
+              titlesData: FlTitlesData(
+                show: true,
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 44,
+                    getTitlesWidget: (double value, meta) {
+                      if (value % yStep != 0) return const SizedBox();
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: Text(
+                          "${(value ~/ 1000)}k",
+                          style: const TextStyle(
+                            fontSize: 15,
+                            color: Color(0xFF9E9E9E),
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      );
+                    },
+                    interval: yStep.toDouble(),
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 40,
+                    getTitlesWidget: (double value, meta) {
+                      int idx = value.toInt();
+                      if (idx < 0 || idx >= data.length) return const SizedBox();
+                      if (idx % labelStride != 0) return const SizedBox();
+                      String label = data[idx].label;
+                      // Truncate for safety if needed
+                      if (label.length > 16) label = label.substring(0, 15) + "...";
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          label,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            color: Color(0xFF9E9E9E),
+                            fontWeight: FontWeight.w400,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                        ),
                       );
                     },
                   ),
-                );
-              }).toList();
-            },
-            touchTooltipData: LineTouchTooltipData(
-              tooltipBgColor: Colors.white,
-              tooltipRoundedRadius: 8,
-              tooltipPadding: const EdgeInsets.all(10),
-              fitInsideHorizontally: true,
-              fitInsideVertically: true,
-              getTooltipItems: (touchedSpots) {
-                if (touchedSpots.isEmpty) return [];
-                final idx = touchedSpots.first.x.toInt();
-                if (idx < 0 || idx >= data.length) return [];
-                final d = data[idx];
-                return [
-                  LineTooltipItem(
-                    '${d.label}\n'
-                        'Dine In : ₹ ${d.dineIn}\n'
-                        'TAKE AWAY : ₹ ${d.takeAway}\n'
-                        'Delivery : ₹ ${d.delivery}\n'
-                        'Online : ₹ ${d.online}\n'
-                        'Total : ₹ ${d.dineIn + d.takeAway + d.delivery + d.online}',
-                    const TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 13,
-                    ),
-                  ),
-                ];
-              },
+                ),
+                rightTitles: AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                topTitles: AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+              ),
+              lineTouchData: LineTouchData(
+                enabled: true,
+                handleBuiltInTouches: true,
+                getTouchedSpotIndicator: (barData, spotIndexes) {
+                  return spotIndexes.map((spotIdx) {
+                    return TouchedSpotIndicatorData(
+                      FlLine(color: Colors.transparent),
+                      FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, bar, idx) {
+                          return FlDotCirclePainter(
+                            radius: 8,
+                            color: bar.color ?? Colors.blue,
+                            strokeWidth: 3,
+                            strokeColor: Colors.white,
+                          );
+                        },
+                      ),
+                    );
+                  }).toList();
+                },
+                touchTooltipData: LineTouchTooltipData(
+                  tooltipBgColor: Colors.white,
+                  tooltipRoundedRadius: 8,
+                  tooltipPadding: const EdgeInsets.all(10),
+                  fitInsideHorizontally: true,
+                  fitInsideVertically: true,
+                  getTooltipItems: (touchedSpots) {
+                    if (touchedSpots.isEmpty) return [];
+                    final idx = touchedSpots.first.x.toInt();
+                    if (idx < 0 || idx >= data.length) return [];
+                    final d = data[idx];
+                    List<String> lines = [];
+                    lines.add('${d.label}');
+                    if (d.dineIn > 0) lines.add('Dine In : ₹ ${d.dineIn}');
+                    if (d.takeAway > 0) lines.add('TAKE AWAY : ₹ ${d.takeAway}');
+                    if (d.delivery > 0) lines.add('Delivery : ₹ ${d.delivery}');
+                    if (d.online > 0) lines.add('Online : ₹ ${d.online}');
+                    lines.add('Total : ₹ ${d.dineIn + d.takeAway + d.delivery + d.online}');
+                    return [
+                      LineTooltipItem(
+                        lines.join('\n'),
+                        const TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ];
+                  },
+                ),
+              ),
             ),
           ),
         ),
@@ -1614,4 +1944,27 @@ class ChartLineData {
   final int delivery;
   final int online;
   ChartLineData(this.label, this.dineIn, this.takeAway, this.delivery, this.online);
+}
+
+
+class CalendarDateRangePicker extends StatelessWidget {
+  final DateTimeRange initialRange;
+  final void Function(DateTimeRange range) onRangeSelected;
+
+  const CalendarDateRangePicker({super.key, required this.initialRange, required this.onRangeSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 300,
+      child: CalendarDatePicker(
+        initialDate: initialRange.start,
+        firstDate: DateTime(2020),
+        lastDate: DateTime.now(),
+        onDateChanged: (date) {
+          // Demo: for production use a custom date range picker here.
+        },
+      ),
+    );
+  }
 }
